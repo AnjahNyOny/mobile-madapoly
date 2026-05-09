@@ -1,7 +1,13 @@
 import React, { useEffect, useCallback } from 'react';
 import { StyleSheet, View, Dimensions } from 'react-native';
 import { GestureDetector, Gesture } from 'react-native-gesture-handler';
-import { Animated } from 'react-native';
+import Animated, {
+  useSharedValue,
+  useAnimatedStyle,
+  withTiming,
+  withSpring,
+  Easing,
+} from 'react-native-reanimated';
 import { useGameStore } from '../store/useGameStore';
 import { COLORS } from '../styles/theme';
 import { BOARD_SIZE, getTileCenter } from '../utils/mathHelpers';
@@ -10,17 +16,11 @@ import { BoardLayer } from '../components/board/BoardLayer';
 import { TokenLayer } from '../components/board/TokenLayer';
 import { HUDLayer } from '../components/ui/HUDLayer';
 import { useBotLogic } from '../hooks/useBotLogic';
-import { useGameHaptics } from '../hooks/useGameHaptics';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 // Camera animation configuration
-const SPRING_CONFIG = {
-  damping: 15,
-  stiffness: 90,
-  mass: 1,
-  useNativeDriver: true,
-};
+const SPRING_CONFIG = { damping: 15, stiffness: 90, mass: 1 };
 
 export const GameScreen = () => {
   // ── Zustand selectors (only what GameScreen needs) ──
@@ -32,26 +32,14 @@ export const GameScreen = () => {
   // ── Bot AI: all auto-play logic is handled by this hook ──
   useBotLogic();
 
-  // ── Game Feel: haptic vibrations ──
-  useGameHaptics();
-
   // ─────────────────────────────────────────────────
   // CAMÉRA DYNAMIQUE : Shared values for board translation
   // ─────────────────────────────────────────────────
-  const translateX = React.useRef(new Animated.Value(0)).current;
-  const translateY = React.useRef(new Animated.Value(0)).current;
-  
-  // Track current values manually for gesture continuity
-  const currentTranslate = React.useRef({ x: 0, y: 0 });
-  
-  useEffect(() => {
-    const xId = translateX.addListener(({ value }) => { currentTranslate.current.x = value; });
-    const yId = translateY.addListener(({ value }) => { currentTranslate.current.y = value; });
-    return () => {
-      translateX.removeListener(xId);
-      translateY.removeListener(yId);
-    };
-  }, [translateX, translateY]);
+  const translateX = useSharedValue(0);
+  const translateY = useSharedValue(0);
+  // Saved offsets for pan gesture continuity
+  const savedX = useSharedValue(0);
+  const savedY = useSharedValue(0);
 
   /**
    * Smoothly center the camera on a given board position index.
@@ -60,15 +48,15 @@ export const GameScreen = () => {
    */
   const centerOnPosition = useCallback((position: number) => {
     const center = getTileCenter(position);
-    Animated.spring(translateX, {
-      toValue: SCREEN_WIDTH / 2 - center.x,
-      ...SPRING_CONFIG,
-    }).start();
-    Animated.spring(translateY, {
-      toValue: SCREEN_HEIGHT / 2 - center.y,
-      ...SPRING_CONFIG,
-    }).start();
-  }, [translateX, translateY]);
+    translateX.value = withSpring(
+      SCREEN_WIDTH / 2 - center.x,
+      SPRING_CONFIG
+    );
+    translateY.value = withSpring(
+      SCREEN_HEIGHT / 2 - center.y,
+      SPRING_CONFIG
+    );
+  }, []);
 
   /**
    * Pan gesture for manual board exploration.
@@ -76,15 +64,27 @@ export const GameScreen = () => {
    * Camera auto-recenters on the next turn or animation.
    */
   const panGesture = Gesture.Pan()
-    .onBegin(() => {
-      // Stop ongoing animations when user touches
-      translateX.stopAnimation();
-      translateY.stopAnimation();
+    .onStart(() => {
+      'worklet';
+      savedX.value = translateX.value;
+      savedY.value = translateY.value;
     })
     .onUpdate((e) => {
-      translateX.setValue(currentTranslate.current.x + e.translationX);
-      translateY.setValue(currentTranslate.current.y + e.translationY);
+      'worklet';
+      translateX.value = savedX.value + e.translationX;
+      translateY.value = savedY.value + e.translationY;
     });
+
+  /**
+   * Animated style applied to the board container.
+   * Uses translateX/Y for GPU-accelerated rendering (no layout recalc).
+   */
+  const boardAnimatedStyle = useAnimatedStyle(() => ({
+    transform: [
+      { translateX: translateX.value },
+      { translateY: translateY.value },
+    ],
+  }));
 
   // ── Initialize the game on mount ──
   useEffect(() => {
@@ -116,7 +116,7 @@ export const GameScreen = () => {
     <View style={styles.container}>
       {/* Layer 1: Pannable & animated board container */}
       <GestureDetector gesture={panGesture}>
-        <Animated.View style={[styles.boardContainer, { transform: [{ translateX }, { translateY }] }]}>
+        <Animated.View style={[styles.boardContainer, boardAnimatedStyle]}>
           <BoardLayer />
           <TokenLayer />
         </Animated.View>

@@ -1,6 +1,15 @@
 import React, { useEffect } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
-import { Animated, Easing } from 'react-native';
+import Animated, {
+  useSharedValue,
+  useAnimatedStyle,
+  withTiming,
+  withDelay,
+  withSequence,
+  Easing,
+  interpolate,
+  Extrapolation,
+} from 'react-native-reanimated';
 import { useGameStore, GameEvent } from '../../store/useGameStore';
 import { COLORS, BORDER_RADIUS } from '../../styles/theme';
 
@@ -27,68 +36,42 @@ export const EventToast = () => {
   const lastEvent = useGameStore((s) => s.lastEvent);
   const clearEvent = useGameStore((s) => s.clearEvent);
 
-  const progress = React.useRef(new Animated.Value(0)).current;
+  const progress = useSharedValue(0); // 0 = hidden, 1 = visible
 
-  // React to new events
   useEffect(() => {
     if (lastEvent) {
-      // Pop in -> hold -> slide out
-      Animated.sequence([
-        Animated.timing(progress, {
-          toValue: 1,
-          duration: 350,
-          easing: Easing.out(Easing.back(1.5)),
-          useNativeDriver: true,
-        }),
-        Animated.delay(TOAST_DURATION),
-        Animated.timing(progress, {
-          toValue: 0,
-          duration: 300,
-          easing: Easing.in(Easing.ease),
-          useNativeDriver: true,
-        }),
-      ]).start(() => {
+      // Animate in → hold → animate out
+      progress.value = withSequence(
+        withTiming(1, { duration: 300, easing: Easing.out(Easing.back(1.5)) }),
+        withDelay(TOAST_DURATION, withTiming(0, { duration: 250, easing: Easing.in(Easing.ease) }))
+      );
+
+      // Clear event after full animation
+      const timeout = setTimeout(() => {
         clearEvent();
-      });
+      }, 300 + TOAST_DURATION + 250 + 100);
+
+      return () => clearTimeout(timeout);
     } else {
-      // Ensure hidden
-      progress.setValue(0);
+      progress.value = withTiming(0, { duration: 200 });
     }
-  }, [lastEvent, clearEvent, progress]);
+  }, [lastEvent]);
+
+  const animatedStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(progress.value, [0, 1], [0, 1], Extrapolation.CLAMP),
+    transform: [
+      { translateY: interpolate(progress.value, [0, 1], [-30, 0], Extrapolation.CLAMP) },
+      { scale: interpolate(progress.value, [0, 1], [0.85, 1], Extrapolation.CLAMP) },
+    ],
+    pointerEvents: progress.value > 0.5 ? 'auto' as const : 'none' as const,
+  }));
 
   if (!lastEvent) return null;
 
   const bgColor = EVENT_BG[lastEvent.type] || EVENT_BG.info;
 
-  const translateY = progress.interpolate({
-    inputRange: [0, 1],
-    outputRange: [50, 0] // Slide up from bottom
-  });
-
-  const opacity = progress.interpolate({
-    inputRange: [0, 0.5, 1],
-    outputRange: [0, 1, 1]
-  });
-
-  const scale = progress.interpolate({
-    inputRange: [0, 1],
-    outputRange: [0.8, 1]
-  });
-
   return (
-    <Animated.View
-      pointerEvents="none"
-      style={[
-        styles.container,
-        {
-          opacity,
-          transform: [
-            { translateY },
-            { scale },
-          ]
-        }
-      ]}
-    >
+    <Animated.View style={[styles.container, animatedStyle]}>
       <View style={[styles.toast, { backgroundColor: bgColor }]}>
         <Text style={styles.emoji}>{lastEvent.emoji}</Text>
         <Text style={styles.message} numberOfLines={2}>

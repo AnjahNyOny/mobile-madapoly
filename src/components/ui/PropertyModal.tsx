@@ -1,14 +1,6 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { StyleSheet, View, Text, TouchableOpacity, Dimensions } from 'react-native';
-import Animated, {
-  useSharedValue,
-  useAnimatedStyle,
-  withTiming,
-  withSpring,
-  Easing,
-  interpolate,
-  Extrapolation,
-} from 'react-native-reanimated';
+import { Animated, Easing } from 'react-native';
 import { useGameStore } from '../../store/useGameStore';
 import { STATIC_BOARD } from '../../constants';
 import { COLORS, SPACING, BORDER_RADIUS } from '../../styles/theme';
@@ -41,7 +33,7 @@ export const PropertyModal = () => {
   const shouldShow = isVisible && space;
 
   // ── Animation shared values ──
-  const slideProgress = useSharedValue(0); // 0 = hidden, 1 = visible
+  const slideProgress = useRef(new Animated.Value(0)).current; // 0 = hidden, 1 = visible
   
   // ── Timer state ──
   const [timeLeft, setTimeLeft] = useState(TIMER_SECONDS);
@@ -50,7 +42,13 @@ export const PropertyModal = () => {
   useEffect(() => {
     if (shouldShow) {
       // Animate modal in
-      slideProgress.value = withSpring(1, { damping: 18, stiffness: 140, mass: 0.8 });
+      Animated.spring(slideProgress, {
+        toValue: 1,
+        damping: 18,
+        stiffness: 140,
+        mass: 0.8,
+        useNativeDriver: true,
+      }).start();
 
       // Start countdown timer
       setTimeLeft(TIMER_SECONDS);
@@ -66,7 +64,12 @@ export const PropertyModal = () => {
       }, 1000);
     } else {
       // Animate modal out
-      slideProgress.value = withTiming(0, { duration: 200, easing: Easing.in(Easing.ease) });
+      Animated.timing(slideProgress, {
+        toValue: 0,
+        duration: 200,
+        easing: Easing.in(Easing.ease),
+        useNativeDriver: true,
+      }).start();
 
       if (timerRef.current) {
         clearInterval(timerRef.current);
@@ -83,18 +86,32 @@ export const PropertyModal = () => {
   }, [shouldShow]);
 
   // ── Animated styles ──
-  const backdropStyle = useAnimatedStyle(() => ({
-    opacity: interpolate(slideProgress.value, [0, 1], [0, 1], Extrapolation.CLAMP),
-    pointerEvents: slideProgress.value > 0.1 ? 'auto' as const : 'none' as const,
-  }));
+  const backdropStyle = {
+    opacity: slideProgress,
+  };
 
-  const cardStyle = useAnimatedStyle(() => ({
-    transform: [
-      { translateY: interpolate(slideProgress.value, [0, 1], [SCREEN_HEIGHT * 0.5, 0], Extrapolation.CLAMP) },
-      { scale: interpolate(slideProgress.value, [0, 0.5, 1], [0.8, 0.95, 1], Extrapolation.CLAMP) },
-    ],
-    opacity: interpolate(slideProgress.value, [0, 0.3, 1], [0, 1, 1], Extrapolation.CLAMP),
-  }));
+  const translateY = slideProgress.interpolate({
+    inputRange: [0, 1],
+    outputRange: [SCREEN_HEIGHT * 0.5, 0],
+    extrapolate: 'clamp',
+  });
+
+  const scale = slideProgress.interpolate({
+    inputRange: [0, 0.5, 1],
+    outputRange: [0.8, 0.95, 1],
+    extrapolate: 'clamp',
+  });
+
+  const opacity = slideProgress.interpolate({
+    inputRange: [0, 0.3, 1],
+    outputRange: [0, 1, 1],
+    extrapolate: 'clamp',
+  });
+
+  const cardStyle = {
+    transform: [{ translateY }, { scale }],
+    opacity,
+  };
 
   if (!space) return null;
 

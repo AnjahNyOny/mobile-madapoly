@@ -8,18 +8,7 @@ interface SpaceTileProps {
   layout: TileLayout;
 }
 
-// Icons as unicode/emoji for each special type
-const TYPE_ICONS: Record<string, string> = {
-  'start': '🏁',
-  'jail': '🔒',
-  'free-parking': '🅿️',
-  'go-to-jail': '👮',
-  'community-chest': '🃏',
-  'chance': '❓',
-  'tax': '💰',
-  'railroad': '🚂',
-  'utility': '⚡',
-};
+import { TileIconRenderer } from './TileIconRenderer';
 
 // Background colors per tile type
 const BG_COLORS: Record<string, string> = {
@@ -52,7 +41,6 @@ export const SpaceTile = React.memo(({ space, layout }: SpaceTileProps) => {
 
   const isProperty = space.type === 'property';
   const hasColor = isProperty && !!space.color;
-  const icon = TYPE_ICONS[space.type];
   const bgColor = BG_COLORS[space.type] || '#FFFFFF';
 
   // Color strip thickness as percentage of tile dimension
@@ -114,8 +102,10 @@ export const SpaceTile = React.memo(({ space, layout }: SpaceTileProps) => {
       {renderColorStrip()}
 
       <View style={[styles.contentContainer, getContentPadding()]}>
-        {icon && !isProperty && (
-          <Text style={{ fontSize: iconSize, marginBottom: 1 }}>{icon}</Text>
+        {!isProperty && (
+          <View style={{ marginBottom: 2 }}>
+            <TileIconRenderer type={space.type} size={iconSize} color="#333333" />
+          </View>
         )}
         <Text
           style={[styles.tileName, { fontSize: nameFontSize }]}

@@ -21,7 +21,6 @@ interface GameActions {
   handleTimeout: () => void;
   clearEvent: () => void;
   handleBankruptcy: (bankruptPlayerId: string, creditorId: string | null) => void;
-  debugForceBankruptcy: () => void;
 }
 
 interface GameStoreState extends GameState {
@@ -378,23 +377,5 @@ export const useGameStore = create<GameStoreState & GameActions>((set, get) => (
     const { turnPhase } = get();
     if (turnPhase === 'WAITING_FOR_DICE') get().rollDice();
     else if (turnPhase === 'WAITING_FOR_DECISION') get().skipPurchase();
-  },
-
-  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // DEBUG : Force la faillite du premier bot (temporaire)
-  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  debugForceBankruptcy: () => {
-    const { players } = get();
-    const bot = players.find(p => p.isBot && !p.isBankrupt);
-    if (!bot) return;
-
-    // Mettre le solde à -100
-    const newPlayers = players.map(p =>
-      p.id === bot.id ? { ...p, balance: -100 } : p
-    );
-    set({ players: newPlayers });
-
-    // Déclencher la faillite (dette envers la banque)
-    get().handleBankruptcy(bot.id, null);
   },
 }));

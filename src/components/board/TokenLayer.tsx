@@ -1,18 +1,15 @@
 import React, { useEffect, useRef, useCallback } from 'react';
 import { StyleSheet, View, Text } from 'react-native';
-import Animated, {
-  useSharedValue,
-  useAnimatedStyle,
-  withTiming,
-  Easing,
-} from 'react-native-reanimated';
+import { Animated, Easing } from 'react-native';
 import { useGameStore } from '../../store/useGameStore';
 import { getTileCenter } from '../../utils/mathHelpers';
 import { COLORS } from '../../styles/theme';
 
 // ─── CONFIGURATION ───
 const TOKEN_SIZE = 28;
-const ANIMATION_DURATION = 650; // ms
+const ANIMATION_DURATION = 650; // ms timeout duration
+
+const BOUNCY_EASING = Easing.out(Easing.back(1.5));
 
 // Distinct player colors inspired by the Malagasy palette
 const PLAYER_COLORS = ['#E10214', '#0069AF', '#1FB25A', '#FEDB01'];
@@ -49,8 +46,8 @@ const PlayerToken = React.memo(({
 
   // Initial position
   const initialCenter = getTileCenter(position);
-  const animX = useSharedValue(initialCenter.x + offsetX);
-  const animY = useSharedValue(initialCenter.y + offsetY);
+  const animX = useRef(new Animated.Value(initialCenter.x + offsetX)).current;
+  const animY = useRef(new Animated.Value(initialCenter.y + offsetY)).current;
 
   // Stable callback for endAnimation
   const onAnimationEnd = useCallback(() => {
@@ -65,58 +62,50 @@ const PlayerToken = React.memo(({
     const targetX = newCenter.x + offsetX;
     const targetY = newCenter.y + offsetY;
 
-    // Clear any pending animation timeout
-    if (animationTimeout.current) {
-      clearTimeout(animationTimeout.current);
-      animationTimeout.current = null;
-    }
-
     if (isCurrentPlayer && turnPhase === 'ANIMATING_MOVEMENT') {
       // ── ANIMATED MOVE ──
-      // Smooth slide from current position to new position
-      animX.value = withTiming(targetX, {
-        duration: ANIMATION_DURATION,
-        easing: Easing.bezier(0.25, 0.1, 0.25, 1),
-      });
-      animY.value = withTiming(targetY, {
-        duration: ANIMATION_DURATION,
-        easing: Easing.bezier(0.25, 0.1, 0.25, 1),
-      });
-
-      // Call endAnimation after the animation completes
-      // Using timeout as a reliable cross-platform approach (web + native)
-      animationTimeout.current = setTimeout(() => {
+      Animated.parallel([
+        Animated.timing(animX, {
+          toValue: targetX,
+          duration: ANIMATION_DURATION,
+          easing: BOUNCY_EASING,
+          useNativeDriver: true,
+        }),
+        Animated.timing(animY, {
+          toValue: targetY,
+          duration: ANIMATION_DURATION,
+          easing: BOUNCY_EASING,
+          useNativeDriver: true,
+        }),
+      ]).start(() => {
+        lastPosition.current = position;
         onAnimationEnd();
-      }, ANIMATION_DURATION + 80);
+      });
     } else {
       // ── INSTANT SNAP ──
       // Teleport (e.g., go-to-jail, initial placement)
-      animX.value = targetX;
-      animY.value = targetY;
+      animX.setValue(targetX);
+      animY.setValue(targetY);
+      lastPosition.current = position;
     }
-
-    lastPosition.current = position;
-
-    return () => {
-      if (animationTimeout.current) {
-        clearTimeout(animationTimeout.current);
-      }
-    };
-  }, [position, turnPhase, isCurrentPlayer]);
-
-  // Animated style — only transforms, no layout changes (GPU-accelerated)
-  const animatedStyle = useAnimatedStyle(() => ({
-    transform: [
-      { translateX: animX.value - TOKEN_SIZE / 2 },
-      { translateY: animY.value - TOKEN_SIZE / 2 },
-    ],
-  }));
+  }, [position, turnPhase, isCurrentPlayer, animX, animY, onAnimationEnd, offsetX, offsetY]);
 
   const color = PLAYER_COLORS[playerIndex % PLAYER_COLORS.length];
   const emoji = PLAYER_EMOJIS[playerIndex % PLAYER_EMOJIS.length];
 
   return (
-    <Animated.View style={[styles.token, animatedStyle]}>
+    <Animated.View
+      style={[
+        styles.token,
+        {
+          transform: [
+            { translateX: Animated.subtract(animX, TOKEN_SIZE / 2) },
+            { translateY: Animated.subtract(animY, TOKEN_SIZE / 2) },
+          ],
+          zIndex: isCurrentPlayer ? 100 : 10,
+        },
+      ]}
+    >
       {/* Outer glow for active player */}
       {isCurrentPlayer && <View style={[styles.activeGlow, { borderColor: color }]} />}
       

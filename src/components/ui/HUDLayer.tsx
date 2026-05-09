@@ -24,7 +24,6 @@ export const HUDLayer = () => {
   const turnPhase = useGameStore((s) => s.turnPhase);
   const lastDiceRoll = useGameStore((s) => s.lastDiceRoll);
   const rollDice = useGameStore((s) => s.rollDice);
-  const debugForceBankruptcy = useGameStore((s) => s.debugForceBankruptcy);
 
   const canRoll = turnPhase === 'WAITING_FOR_DICE';
   const isGameOver = turnPhase === 'GAME_OVER';
@@ -104,15 +103,6 @@ export const HUDLayer = () => {
           )}
         </View>
       </SafeAreaView>
-
-      {/* ─── DEBUG BUTTON: Test Bankruptcy (temporary) ─── */}
-      <TouchableOpacity
-        style={styles.debugButton}
-        onPress={debugForceBankruptcy}
-        activeOpacity={0.7}
-      >
-        <Text style={styles.debugButtonText}>💀 TEST FAILLITE</Text>
-      </TouchableOpacity>
 
       {/* ─── EVENT TOAST (slides from top) ─── */}
       <EventToast />
@@ -213,26 +203,6 @@ const styles = StyleSheet.create({
     color: COLORS.textSecondary,
     fontSize: 14,
     fontFamily: 'Inter_400Regular',
-  },
-
-  // ─── DEBUG BUTTON ───
-  debugButton: {
-    position: 'absolute',
-    top: 60,
-    right: 10,
-    backgroundColor: 'rgba(225, 2, 20, 0.9)',
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-    borderRadius: 8,
-    zIndex: 300,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.2)',
-  },
-  debugButtonText: {
-    color: COLORS.white,
-    fontSize: 11,
-    fontFamily: 'Inter_700Bold',
-    letterSpacing: 0.5,
   },
 
   // ─── GAME OVER BANNER ───

@@ -91,9 +91,9 @@ ROADMAP : MONOPOLY MADAGASCAR
 
 [x] Gestion des fins de partie et faillite.
 
-⚪ SPRINT 4 : Finalisation
-[ ] Intégration des assets visuels définitifs (Vecteurs, logos, masques).
+🟢 SPRINT 4 : Finalisation (Terminé)
+[x] Intégration des assets visuels définitifs (Placeholders vectoriels temporaires implémentés via TileIconRenderer).
 
-[ ] Ajustements ergonomiques et tests de performance.
+[x] Ajustements ergonomiques et tests de performance (Game feel : Haptics et animations Reanimated avec withSpring).
 
-[ ] Compilation pour mobile (APK/iOS).
+[x] Configuration finale pour mobile (Nettoyage, Métadonnées, app.json).

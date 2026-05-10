@@ -89,6 +89,11 @@ export const LobbyScreen = () => {
     }
   }, [appScreen]);
 
+  // Auto-refresh live rooms when select screen is shown
+  useEffect(() => {
+    if (mode === 'select') fetchLiveRooms();
+  }, [mode]);
+
   useEffect(() => {
     // Register common network listeners
     NetworkManager.onConnection((clientId) => {
@@ -494,7 +499,27 @@ export const LobbyScreen = () => {
                   </View>
                   <View style={{ flexDirection: 'column', gap: 4, alignItems: 'flex-end' }}>
                     {room.status === 'lobby' && (
-                      <TouchableOpacity style={styles.joinLiveButton} onPress={() => { setClientInputRoomCode(room.roomCode); }} disabled={isConnecting}>
+                      <TouchableOpacity
+                        style={styles.joinLiveButton}
+                        disabled={isConnecting}
+                        onPress={async () => {
+                          setClientInputRoomCode(room.roomCode);
+                          setIsConnecting(true);
+                          setConnectionError('En attente d\'approbation de l\'hôte...');
+                          NetworkManager.setTransport('websocket', RELAY_URL);
+                          try {
+                            await NetworkManager.joinRoom(room.roomCode, localPlayerName, localPlayerAvatar);
+                            setMode('online_client');
+                            setNetworkRole('client', 'client-' + Date.now());
+                            setConnectionError('');
+                          } catch (e: any) {
+                            setConnectionError(e?.message || 'Connexion impossible.');
+                            NetworkManager.setTransport('tcp');
+                          } finally {
+                            setIsConnecting(false);
+                          }
+                        }}
+                      >
                         <Text style={styles.joinLiveButtonText}>Rejoindre</Text>
                       </TouchableOpacity>
                     )}

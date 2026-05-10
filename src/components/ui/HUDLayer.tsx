@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { StyleSheet, View, Text, TouchableOpacity, SafeAreaView, Platform, StatusBar } from 'react-native';
 import { useGameStore } from '../../store/useGameStore';
 import { COLORS, SPACING, BORDER_RADIUS } from '../../styles/theme';
@@ -34,7 +34,28 @@ export const HUDLayer = () => {
   const rollDice = useGameStore((s) => s.rollDice);
   const localPlayerId = useGameStore(s => s.localPlayerId);
   const setIsGameLogOpen = useGameStore(s => s.setIsGameLogOpen);
+  const chronoEndTime = useGameStore(s => s.chronoEndTime);
+  const checkChronoExpired = useGameStore(s => s.checkChronoExpired);
   const [isTradeModalOpen, setIsTradeModalOpen] = React.useState(false);
+  const [chronoDisplay, setChronoDisplay] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!chronoEndTime) { setChronoDisplay(null); return; }
+    const update = () => {
+      const remaining = chronoEndTime - Date.now();
+      if (remaining <= 0) {
+        setChronoDisplay('00:00');
+        checkChronoExpired();
+        return;
+      }
+      const m = Math.floor(remaining / 60000);
+      const s = Math.floor((remaining % 60000) / 1000);
+      setChronoDisplay(`${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`);
+    };
+    update();
+    const id = setInterval(update, 1000);
+    return () => clearInterval(id);
+  }, [chronoEndTime]);
 
   const currentPlayer = players[currentPlayerIndex];
   const isLocalPlayerTurn = currentPlayer?.id === localPlayerId;
@@ -61,6 +82,17 @@ export const HUDLayer = () => {
             <Text style={styles.logButtonIcon}>📜</Text>
           </TouchableOpacity>
           <ForfeitButton />
+          {chronoDisplay && (
+            <View style={[
+              styles.chronoBadge,
+              chronoDisplay <= '00:30' && styles.chronoBadgeUrgent,
+            ]}>
+              <Text style={[
+                styles.chronoText,
+                chronoDisplay <= '00:30' && styles.chronoTextUrgent,
+              ]}>⏱ {chronoDisplay}</Text>
+            </View>
+          )}
           <View style={styles.playerCardsRow}>
             {players.map((player, index) => (
               <PlayerCard
@@ -203,6 +235,27 @@ const styles = StyleSheet.create({
   },
   logButtonIcon: {
     fontSize: 20,
+  },
+  chronoBadge: {
+    backgroundColor: 'rgba(18,18,18,0.85)',
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.12)',
+  },
+  chronoBadgeUrgent: {
+    borderColor: '#EF4444',
+    backgroundColor: 'rgba(239,68,68,0.15)',
+  },
+  chronoText: {
+    color: '#FFF',
+    fontFamily: 'Inter_700Bold',
+    fontSize: 14,
+    letterSpacing: 1,
+  },
+  chronoTextUrgent: {
+    color: '#EF4444',
   },
   playerCardsRow: {
     flexDirection: 'row',

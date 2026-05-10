@@ -37,6 +37,8 @@ export const LobbyScreen = () => {
   const syncState = useGameStore(s => s.syncState);
   const initGame = useGameStore(s => s.initGame);
   const appScreen = useGameStore(s => s.appScreen);
+  const setWinCondition = useGameStore(s => s.setWinCondition);
+  const winCondition = useGameStore(s => s.winCondition);
 
   const fetchLiveRooms = async () => {
     setIsFetchingRooms(true);
@@ -392,6 +394,58 @@ export const LobbyScreen = () => {
 
             <View style={styles.divider} />
             <Text style={styles.sectionTitle}>🏠  Solo</Text>
+
+            {/* Win condition selector */}
+            <Text style={styles.stepperLabel}>🏆 Condition de victoire</Text>
+            <View style={styles.winConditionRow}>
+              {(['last_standing', 'fortune_limit', 'chrono'] as const).map(t => (
+                <TouchableOpacity
+                  key={t}
+                  style={[styles.winConditionChip, winCondition.type === t && styles.winConditionChipActive]}
+                  onPress={() => setWinCondition(
+                    t === 'fortune_limit' ? { type: 'fortune_limit', amount: 10000 }
+                    : t === 'chrono' ? { type: 'chrono', durationMs: 30 * 60 * 1000 }
+                    : { type: 'last_standing' }
+                  )}
+                >
+                  <Text style={[styles.winConditionChipText, winCondition.type === t && styles.winConditionChipTextActive]}>
+                    {t === 'last_standing' ? '🏳️ Dernier' : t === 'fortune_limit' ? '💰 Fortune' : '⏱️ Chrono'}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+            {winCondition.type === 'fortune_limit' && (
+              <View style={styles.winConditionSub}>
+                <Text style={styles.stepperLabel}>Cible : {winCondition.amount.toLocaleString()} AR</Text>
+                <View style={styles.stepper}>
+                  {[5000, 10000, 20000, 50000].map(amt => (
+                    <TouchableOpacity
+                      key={amt}
+                      style={[styles.stepperButton, { paddingHorizontal: 10 }, winCondition.amount === amt && styles.stepperButtonActive]}
+                      onPress={() => setWinCondition({ type: 'fortune_limit', amount: amt })}
+                    >
+                      <Text style={styles.stepperButtonText}>{(amt / 1000).toFixed(0)}k</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
+            )}
+            {winCondition.type === 'chrono' && (
+              <View style={styles.winConditionSub}>
+                <Text style={styles.stepperLabel}>Durée : {winCondition.durationMs / 60000} min</Text>
+                <View style={styles.stepper}>
+                  {[15, 30, 45, 60].map(min => (
+                    <TouchableOpacity
+                      key={min}
+                      style={[styles.stepperButton, { paddingHorizontal: 10 }, winCondition.durationMs === min * 60000 && styles.stepperButtonActive]}
+                      onPress={() => setWinCondition({ type: 'chrono', durationMs: min * 60000 })}
+                    >
+                      <Text style={styles.stepperButtonText}>{min}m</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
+            )}
 
             {/* Bot count selector */}
             <Text style={styles.stepperLabel}>🤖 Nombre de Bots</Text>
@@ -839,6 +893,13 @@ const styles = StyleSheet.create({
   statusBadgeText: { color: '#FFF', fontFamily: 'Inter_400Regular', fontSize: 11 },
   joinLiveButton: { backgroundColor: '#22C55E', borderRadius: 8, paddingHorizontal: 12, paddingVertical: 6 },
   joinLiveButtonText: { color: '#FFF', fontFamily: 'Inter_700Bold', fontSize: 12 },
+  winConditionRow: { flexDirection: 'row', gap: 8, marginBottom: 8, width: '100%' },
+  winConditionChip: { flex: 1, borderRadius: 10, borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.2)', paddingVertical: 8, alignItems: 'center' },
+  winConditionChipActive: { borderColor: COLORS.primary, backgroundColor: `${COLORS.primary}22` },
+  winConditionChipText: { color: 'rgba(255,255,255,0.55)', fontFamily: 'Inter_700Bold', fontSize: 12 },
+  winConditionChipTextActive: { color: COLORS.primary },
+  winConditionSub: { width: '100%', marginBottom: 8 },
+  stepperButtonActive: { backgroundColor: COLORS.primary },
   pendingSection: { width: '100%', backgroundColor: 'rgba(255,165,0,0.1)', borderRadius: 12, padding: 12, marginTop: 16, borderWidth: 1, borderColor: 'rgba(255,165,0,0.3)' },
   pendingSectionTitle: { color: '#FFA500', fontFamily: 'Inter_700Bold', fontSize: 13, marginBottom: 8 },
   pendingRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 8 },

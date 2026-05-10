@@ -66,7 +66,17 @@ interface GameActions {
   setSelectedPlayerIdForProps: (id: string | null) => void;
   setSelectedSpaceIdForDetail: (id: string | null) => void;
   setIsGameLogOpen: (isOpen: boolean) => void;
+
+  // ── Win Conditions ──
+  setWinCondition: (condition: WinCondition) => void;
+  setChronoEndTime: (ts: number | null) => void;
+  checkChronoExpired: () => void;
 }
+
+export type WinCondition =
+  | { type: 'last_standing' }
+  | { type: 'fortune_limit'; amount: number }
+  | { type: 'chrono'; durationMs: number };
 
 export type NetworkRole = 'local' | 'host' | 'client' | 'spectator';
 
@@ -82,6 +92,8 @@ interface GameStoreState extends GameState {
   localPlayerAvatar: string;
   appScreen: 'lobby' | 'game';
   connectedClients: ConnectedClient[];
+  winCondition: WinCondition;
+  chronoEndTime: number | null;
 
   // UI Modal states (local only, not broadcasted)
   selectedPlayerIdForProps: string | null;
@@ -93,13 +105,24 @@ interface GameStoreState extends GameState {
 const broadcastIfHost = (getState: () => GameStoreState) => {
   const state = getState();
   if (state.networkRole === 'host') {
-    // Broadcast the essential game state (omit functions)
-    const { players, board, currentPlayerIndex, turnPhase, consecutiveDoubles, lastDiceRoll, actionDeadline, lastEvent, gameLog, turnCount, chanceDeck, communityChestDeck, activeTradeOffer } = state;
+    const { players, board, currentPlayerIndex, turnPhase, consecutiveDoubles, lastDiceRoll, actionDeadline, lastEvent, gameLog, turnCount, chanceDeck, communityChestDeck, activeTradeOffer, winCondition, chronoEndTime } = state;
     NetworkManager.broadcast({
       type: 'STATE_UPDATE',
-      payload: { players, board, currentPlayerIndex, turnPhase, consecutiveDoubles, lastDiceRoll, actionDeadline, lastEvent, gameLog, turnCount, chanceDeck, communityChestDeck, activeTradeOffer }
+      payload: { players, board, currentPlayerIndex, turnPhase, consecutiveDoubles, lastDiceRoll, actionDeadline, lastEvent, gameLog, turnCount, chanceDeck, communityChestDeck, activeTradeOffer, winCondition, chronoEndTime }
     });
   }
+};
+
+// Helper: compute net worth for a player (balance + property purchase prices)
+const computeNetWorth = (player: any, board: any): number => {
+  if (player.isBankrupt) return -1;
+  let worth = player.balance;
+  Object.values(board as Record<string, any>).forEach((space: any) => {
+    if (space?.ownerId === player.id && space?.purchasePrice) {
+      worth += space.purchasePrice + (space.houseCount || 0) * (space.buildCost || 0);
+    }
+  });
+  return worth;
 };
 
 export const useGameStore = create<GameStoreState & GameActions>((setOriginal, get) => {
@@ -132,6 +155,8 @@ export const useGameStore = create<GameStoreState & GameActions>((setOriginal, g
   localPlayerId: null,
   appScreen: 'lobby',
   connectedClients: [],
+  winCondition: { type: 'last_standing' },
+  chronoEndTime: null,
   
   // Initial UI states
   selectedPlayerIdForProps: null,
@@ -143,6 +168,23 @@ export const useGameStore = create<GameStoreState & GameActions>((setOriginal, g
   setSelectedPlayerIdForProps: (id) => set({ selectedPlayerIdForProps: id }),
   setSelectedSpaceIdForDetail: (id) => set({ selectedSpaceIdForDetail: id }),
   setIsGameLogOpen: (isOpen) => set({ isGameLogOpen: isOpen }),
+  setWinCondition: (condition) => set({ winCondition: condition }),
+  setChronoEndTime: (ts) => set({ chronoEndTime: ts }),
+
+  checkChronoExpired: () => {
+    const { chronoEndTime, turnPhase, players, board, networkRole } = get();
+    if (networkRole === 'client') return;
+    if (turnPhase === 'GAME_OVER') return;
+    if (!chronoEndTime || Date.now() < chronoEndTime) return;
+    const activePlayers = players.filter(p => !p.isBankrupt);
+    const sorted = [...activePlayers].sort((a, b) => computeNetWorth(b, board) - computeNetWorth(a, board));
+    const winner = sorted[0];
+    set({
+      turnPhase: 'GAME_OVER',
+      lastEvent: { type: 'victory', message: `⏱️ Temps écoulé ! ${winner?.name || '?'} gagne avec ${computeNetWorth(winner, board).toLocaleString()} AR !`, emoji: '🏆' },
+    });
+    broadcastIfHost(get);
+  },
 
   setNetworkRole: (role, clientId = null) => {
     set({ networkRole: role, clientId });
@@ -235,6 +277,8 @@ export const useGameStore = create<GameStoreState & GameActions>((setOriginal, g
       chanceDeck: [],
       communityChestDeck: [],
       activeTradeOffer: null,
+      winCondition: { type: 'last_standing' },
+      chronoEndTime: null,
       // Reset UI state
       selectedPlayerIdForProps: null,
       selectedSpaceIdForDetail: null,
@@ -267,6 +311,11 @@ export const useGameStore = create<GameStoreState & GameActions>((setOriginal, g
     const initialChance = shuffleArray(Array.from({ length: 16 }, (_, i) => i));
     const initialCommunity = shuffleArray(Array.from({ length: 16 }, (_, i) => i));
 
+    const { winCondition } = get();
+    const chronoEndTime = winCondition.type === 'chrono'
+      ? Date.now() + winCondition.durationMs
+      : null;
+
     set({ 
       players, 
       turnPhase: 'WAITING_FOR_DICE', 
@@ -277,6 +326,7 @@ export const useGameStore = create<GameStoreState & GameActions>((setOriginal, g
       turnCount: 1,
       chanceDeck: initialChance,
       communityChestDeck: initialCommunity,
+      chronoEndTime,
       selectedPlayerIdForProps: null,
       selectedSpaceIdForDetail: null,
       isGameLogOpen: false
@@ -835,7 +885,7 @@ export const useGameStore = create<GameStoreState & GameActions>((setOriginal, g
   // endTurn — Saute les joueurs en faillite, détecte la prison
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   endTurn: () => {
-    const { players, currentPlayerIndex, turnPhase, networkRole, consecutiveDoubles } = get();
+    const { players, currentPlayerIndex, turnPhase, networkRole, consecutiveDoubles, winCondition, chronoEndTime, board } = get();
     if (players.length === 0) return;
     if (turnPhase === 'GAME_OVER') return;
 
@@ -867,6 +917,27 @@ export const useGameStore = create<GameStoreState & GameActions>((setOriginal, g
     }
 
     const nextPlayer = players[nextIndex];
+
+    // ── Vérification Fortune Limite ──
+    if (winCondition.type === 'fortune_limit') {
+      const richest = players.filter(p => !p.isBankrupt).find(p => computeNetWorth(p, board) >= winCondition.amount);
+      if (richest) {
+        set({
+          currentPlayerIndex: nextIndex,
+          turnPhase: 'GAME_OVER',
+          actionDeadline: null,
+          lastEvent: { type: 'victory', message: `💰 ${richest.name} atteint ${winCondition.amount.toLocaleString()} AR et remporte la partie !`, emoji: '🏆' },
+        });
+        broadcastIfHost(get);
+        return;
+      }
+    }
+
+    // ── Vérification Chrono ──
+    if (winCondition.type === 'chrono' && chronoEndTime && Date.now() >= chronoEndTime) {
+      get().checkChronoExpired();
+      return;
+    }
 
     // Si le prochain joueur est en prison → phase IN_JAIL_DECISION
     if (nextPlayer.inJail) {

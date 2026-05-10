@@ -3,7 +3,7 @@ import { StyleSheet, View, Text, TouchableOpacity, TextInput, SafeAreaView, Acti
 import { COLORS, SPACING, BORDER_RADIUS } from '../styles/theme';
 import { NetworkManager } from '../network/NetworkManager';
 import { useGameStore, ConnectedClient } from '../store/useGameStore';
-import { RELAY_URL } from '../constants/config';
+import { RELAY_URL, RELAY_HTTP_URL } from '../constants/config';
 
 type LobbyMode = 'select' | 'host' | 'client' | 'online_host' | 'online_client';
 
@@ -23,6 +23,8 @@ export const LobbyScreen = () => {
   const [roomCode, setRoomCode] = useState<string>('');
   const [clientInputRoomCode, setClientInputRoomCode] = useState<string>('');
   const [roomCodeCopied, setRoomCodeCopied] = useState(false);
+  const [liveRooms, setLiveRooms] = useState<{ roomCode: string; playerCount: number; spectatorCount: number }[]>([]);
+  const [isFetchingRooms, setIsFetchingRooms] = useState(false);
   
   const setNetworkRole = useGameStore(s => s.setNetworkRole);
   const setLocalPlayerId = useGameStore(s => s.setLocalPlayerId);
@@ -33,6 +35,35 @@ export const LobbyScreen = () => {
   const syncState = useGameStore(s => s.syncState);
   const initGame = useGameStore(s => s.initGame);
   const appScreen = useGameStore(s => s.appScreen);
+
+  const fetchLiveRooms = async () => {
+    setIsFetchingRooms(true);
+    try {
+      const res = await fetch(`${RELAY_HTTP_URL}/rooms`);
+      const data = await res.json();
+      setLiveRooms(data);
+    } catch {
+      setLiveRooms([]);
+    } finally {
+      setIsFetchingRooms(false);
+    }
+  };
+
+  const handleWatch = async (code: string) => {
+    setIsConnecting(true);
+    setConnectionError('');
+    NetworkManager.setTransport('websocket', RELAY_URL);
+    try {
+      await NetworkManager.watchRoom(code);
+      setNetworkRole('spectator', null);
+      setAppScreen('game');
+    } catch (e: any) {
+      setConnectionError(e?.message || 'Impossible de rejoindre comme spectateur.');
+      NetworkManager.setTransport('tcp');
+    } finally {
+      setIsConnecting(false);
+    }
+  };
 
   // Bug fix: reset local UI state when store returns to lobby (e.g. after DisconnectModal "Quitter")
   useEffect(() => {
@@ -405,6 +436,29 @@ export const LobbyScreen = () => {
             <TouchableOpacity style={[styles.button, styles.buttonOnlineSecondary]} onPress={handleOnlineJoin} disabled={isConnecting}>
               {isConnecting ? <ActivityIndicator color="#FFF" /> : <Text style={styles.buttonText}>Rejoindre en ligne</Text>}
             </TouchableOpacity>
+
+            <View style={styles.divider} />
+            <View style={styles.liveRoomsHeader}>
+              <Text style={styles.sectionTitle}>👁  Parties en cours</Text>
+              <TouchableOpacity onPress={fetchLiveRooms} disabled={isFetchingRooms} style={styles.refreshButton}>
+                {isFetchingRooms ? <ActivityIndicator size="small" color={COLORS.primary} /> : <Text style={styles.refreshButtonText}>↻</Text>}
+              </TouchableOpacity>
+            </View>
+            {liveRooms.length === 0 ? (
+              <Text style={styles.connectingHint}>Appuie sur ↻ pour chercher des parties en cours</Text>
+            ) : (
+              liveRooms.map(room => (
+                <View key={room.roomCode} style={styles.liveRoomRow}>
+                  <View>
+                    <Text style={styles.liveRoomCode}>{room.roomCode}</Text>
+                    <Text style={styles.liveRoomMeta}>{room.playerCount} joueur{room.playerCount > 1 ? 's' : ''}{room.spectatorCount > 0 ? ` · ${room.spectatorCount} spectateur${room.spectatorCount > 1 ? 's' : ''}` : ''}</Text>
+                  </View>
+                  <TouchableOpacity style={styles.watchButton} onPress={() => handleWatch(room.roomCode)} disabled={isConnecting}>
+                    <Text style={styles.watchButtonText}>Regarder</Text>
+                  </TouchableOpacity>
+                </View>
+              ))
+            )}
           </View>
         </ScrollView>
       )}
@@ -677,6 +731,14 @@ const styles = StyleSheet.create({
   waitingSlotText: { color: 'rgba(255,255,255,0.35)', fontFamily: 'Inter_400Regular', fontSize: 14 },
   waitText: { color: '#AAA', fontFamily: 'Inter_400Regular', fontSize: 16, marginTop: 15, textAlign: 'center' },
   connectingHint: { color: 'rgba(255,255,255,0.35)', fontFamily: 'Inter_400Regular', fontSize: 12, marginTop: 6, textAlign: 'center' },
+  liveRoomsHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', width: '100%', marginBottom: 4 },
+  refreshButton: { padding: 6 },
+  refreshButtonText: { color: COLORS.primary, fontSize: 22, fontFamily: 'Inter_700Bold' },
+  liveRoomRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', width: '100%', backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: 10, paddingHorizontal: 14, paddingVertical: 10, marginBottom: 8 },
+  liveRoomCode: { color: '#FFF', fontFamily: 'Inter_700Bold', fontSize: 15, letterSpacing: 1 },
+  liveRoomMeta: { color: 'rgba(255,255,255,0.45)', fontFamily: 'Inter_400Regular', fontSize: 12, marginTop: 2 },
+  watchButton: { backgroundColor: COLORS.primary, borderRadius: 8, paddingHorizontal: 14, paddingVertical: 7 },
+  watchButtonText: { color: '#FFF', fontFamily: 'Inter_700Bold', fontSize: 13 },
   identityRow: {
     flexDirection: 'row',
     marginBottom: 10,

@@ -515,4 +515,35 @@ relay-server/  (Node.js, déployé sur Railway/Render)
 - [x] Déployé sur **Netlify** depuis branche `online-app`
 - [x] Sous-domaine `game.madapoly.com` configuré (CNAME → Netlify)
 - [x] HTTPS actif
-- [ ] Tester en production : mobile + navigateur dans la même room via `wss://mobile-madapoly.onrender.com`
+- [x] Testé : mobile + émulateur + navigateur dans la même room
+
+---
+
+## Phase 13 — Mode Spectateur & Liste des parties en cours
+
+### 13.1 Relay — Endpoint HTTP `/rooms`
+- [ ] Ajouter `express` ou `http` server inline dans `relay-server/server.js`
+- [ ] `GET /rooms` → retourne `[{ roomCode, playerCount, createdAt }]` (rooms avec ≥1 joueur actif)
+- [ ] CORS activé pour `game.madapoly.com`
+
+### 13.2 Relay — Support du protocole spectateur
+- [ ] Nouveau message `{ type: 'JOIN_SPECTATOR', roomCode }` → `{ type: 'SPECTATOR_OK', roomCode, state }`
+- [ ] Le relay forward tous les `STATE_UPDATE` aux spectateurs de la room
+- [ ] Les spectateurs n'envoient rien (guard côté relay)
+- [ ] `ROOM_DISSOLVED` / `GAME_OVER` → spectateurs déconnectés proprement
+
+### 13.3 NetworkManager — Mode spectateur
+- [ ] Nouvelle méthode `watchRoom(roomCode): Promise<void>`
+- [ ] `wsLocalSocketId` marqué `spectator-*` pour distinguer des joueurs
+- [ ] `onMessage` reçoit les `STATE_UPDATE` normalement
+
+### 13.4 LobbyScreen — Liste des parties en cours
+- [ ] Section "Parties en cours" : `GET <RELAY_URL_HTTP>/rooms` au montage et sur pull-to-refresh
+- [ ] Afficher chaque room : code + nb joueurs + bouton "Regarder"
+- [ ] Bouton "Regarder" → `watchRoom(roomCode)` → `appScreen === 'game'` en mode spectateur
+
+### 13.5 GameScreen / Store — Mode spectateur
+- [ ] `networkRole: 'spectator'` dans le store
+- [ ] `useBotLogic` : guard `if (networkRole === 'spectator') return`
+- [ ] HUD : masquer les boutons d'action (lancer dés, acheter, etc.) si spectateur
+- [ ] Banner discret "Mode spectateur" affiché en overlay

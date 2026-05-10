@@ -741,5 +741,95 @@ export const NetworkManager = {
 
   onDisconnect(callback: (clientId: string) => void) {
     onDisconnectCallback = callback;
-  }
+  },
+
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // ── SPECTATOR — Watch a relay room (read-only)
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  watchRoom(roomCode: string): Promise<void> {
+    const MAX_ATTEMPTS = 4;
+    const RETRY_DELAY_MS = 3000;
+    const CONNECT_TIMEOUT_MS = 55000;
+
+    const attempt = (n: number): Promise<void> => new Promise((resolve, reject) => {
+      NetworkManager._wsCleanup();
+
+      const url = relayUrl;
+      console.log(`[Spectator/WS] Connecting to relay ${url}... (attempt ${n}/${MAX_ATTEMPTS})`);
+
+      try {
+        wsSocket = new WebSocket(url);
+      } catch (e) {
+        reject(new Error('WebSocket not available'));
+        return;
+      }
+
+      let didResolve = false;
+
+      const timeout = setTimeout(() => {
+        if (didResolve) return;
+        wsSocket?.close();
+        if (n < MAX_ATTEMPTS) {
+          setTimeout(() => attempt(n + 1).then(resolve).catch(reject), RETRY_DELAY_MS);
+        } else {
+          reject(new Error('Relay inaccessible.'));
+        }
+      }, CONNECT_TIMEOUT_MS);
+
+      wsSocket.onopen = () => {
+        console.log(`[Spectator/WS] Connected, joining room ${roomCode} as spectator...`);
+        wsSocket!.send(JSON.stringify({ type: 'JOIN_SPECTATOR', roomCode }));
+      };
+
+      wsSocket.onmessage = (event) => {
+        let packet: any;
+        try { packet = JSON.parse(event.data as string); } catch { return; }
+
+        if (packet.type === 'SPECTATOR_OK') {
+          didResolve = true;
+          clearTimeout(timeout);
+          wsLocalSocketId = packet.socketId;
+          wsRoomCode = packet.roomCode;
+          console.log(`[Spectator/WS] Watching room ${wsRoomCode}`);
+          resolve();
+          wsSocket!.onmessage = (e) => {
+            let p: any;
+            try { p = JSON.parse(e.data as string); } catch { return; }
+            if (p.type === 'STATE_UPDATE' && p.payload) {
+              if (onMessageCallback) onMessageCallback(p, 'host');
+            }
+            if (p.type === 'ROOM_DISSOLVED' || p.type === 'HOST_LEFT' || p.type === 'GAME_OVER') {
+              if (onDisconnectCallback) onDisconnectCallback('host_left');
+            }
+          };
+          return;
+        }
+
+        if (packet.type === 'SPECTATOR_ERROR') {
+          didResolve = true;
+          clearTimeout(timeout);
+          reject(new Error(packet.reason || 'Cannot watch room'));
+          wsSocket?.close();
+        }
+      };
+
+      wsSocket.onerror = () => {
+        if (didResolve) return;
+        clearTimeout(timeout);
+        if (n < MAX_ATTEMPTS) {
+          setTimeout(() => attempt(n + 1).then(resolve).catch(reject), RETRY_DELAY_MS);
+        } else {
+          reject(new Error('Relay inaccessible.'));
+        }
+      };
+
+      wsSocket.onclose = () => {
+        wsSocket = null;
+        wsRoomCode = null;
+      };
+    });
+
+    return attempt(1);
+  },
 };

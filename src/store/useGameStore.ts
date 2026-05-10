@@ -52,7 +52,7 @@ interface GameActions {
   cancelTrade: () => void;
   
   // ── Network Integration ──
-  setNetworkRole: (role: 'local' | 'host' | 'client', clientId?: string | null) => void;
+  setNetworkRole: (role: NetworkRole, clientId?: string | null) => void;
   setLocalPlayerId: (id: string) => void;
   setLocalPlayerInfo: (name: string, avatar: string) => void;
   setNetworkStatus: (status: 'connected' | 'disconnected' | 'host_disconnected') => void;
@@ -68,7 +68,7 @@ interface GameActions {
   setIsGameLogOpen: (isOpen: boolean) => void;
 }
 
-export type NetworkRole = 'local' | 'host' | 'client';
+export type NetworkRole = 'local' | 'host' | 'client' | 'spectator';
 
 export type NetworkStatus = 'connected' | 'disconnected' | 'host_disconnected';
 

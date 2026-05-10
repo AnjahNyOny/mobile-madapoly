@@ -1,5 +1,5 @@
 import React, { useEffect, useCallback } from 'react';
-import { StyleSheet, View, Dimensions, Platform } from 'react-native';
+import { StyleSheet, View, Text, Dimensions, Platform } from 'react-native';
 import { GestureDetector, Gesture } from 'react-native-gesture-handler';
 import Animated, {
   useSharedValue,
@@ -28,6 +28,8 @@ export const GameScreen = () => {
   const turnPhase = useGameStore((s) => s.turnPhase);
   const players = useGameStore((s) => s.players);
   const currentPlayerIndex = useGameStore((s) => s.currentPlayerIndex);
+  const networkRole = useGameStore((s) => s.networkRole);
+  const isSpectator = networkRole === 'spectator';
 
   // ── Bot AI: all auto-play logic is handled by this hook ──
   useBotLogic();
@@ -119,7 +121,14 @@ export const GameScreen = () => {
       </GestureDetector>
 
       {/* Layer 2: Fixed HUD overlay (passes through touches to board) */}
-      <HUDLayer />
+      {!isSpectator && <HUDLayer />}
+
+      {/* Layer 3: Spectator banner */}
+      {isSpectator && (
+        <View style={styles.spectatorBanner}>
+          <Text style={styles.spectatorBannerText}>👁  Mode spectateur</Text>
+        </View>
+      )}
     </View>
   );
 };
@@ -133,6 +142,20 @@ const styles = StyleSheet.create({
   boardContainer: {
     width: BOARD_SIZE,
     height: BOARD_SIZE,
-    position: 'absolute', // Absolute so translations work correctly
+    position: 'absolute',
+  },
+  spectatorBanner: {
+    position: 'absolute',
+    bottom: 24,
+    alignSelf: 'center',
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    borderRadius: 20,
+    paddingHorizontal: 18,
+    paddingVertical: 8,
+  },
+  spectatorBannerText: {
+    color: 'rgba(255,255,255,0.7)',
+    fontFamily: 'Inter_400Regular',
+    fontSize: 13,
   },
 });

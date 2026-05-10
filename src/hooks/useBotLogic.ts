@@ -59,6 +59,7 @@ export const useBotLogic = () => {
     // Client devices don't run game logic — the host handles everything
     // (bot actions, END_OF_TURN advances) and broadcasts state updates.
     if (networkRole === 'client') return;
+    if (networkRole === 'spectator') return;
     if (players.length === 0) return;
     if (turnPhase === 'GAME_OVER') return; // Partie terminée — rien à faire
 

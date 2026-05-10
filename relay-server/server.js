@@ -13,6 +13,7 @@
  * Deploy: Railway / Render (set PORT env var automatically).
  */
 
+const http = require('http');
 const { WebSocketServer, WebSocket } = require('ws');
 
 const PORT = parseInt(process.env.PORT || '8080', 10);
@@ -22,11 +23,15 @@ const MAX_PACKETS_PER_SECOND = 20;
 const MAX_MESSAGE_BYTES = 64 * 1024; // 64 KB — STATE_UPDATE is typically < 5 KB
 const MAX_TOTAL_CONNECTIONS = 100;   // Basic DoS guard
 
-// rooms: Map<roomCode, Set<WebSocket>>
+// rooms: Map<roomCode, Set<WebSocket>>  — players only (not spectators)
 const rooms = new Map();
 // roomHosts: Map<roomCode, WebSocket>  — the host socket for each room
 const roomHosts = new Map();
-// socketMeta: Map<WebSocket, { roomCode, socketId, packetCount, packetWindow }>
+// roomSpectators: Map<roomCode, Set<WebSocket>>  — spectators per room
+const roomSpectators = new Map();
+// roomCreatedAt: Map<roomCode, number>  — creation timestamp
+const roomCreatedAt = new Map();
+// socketMeta: Map<WebSocket, { roomCode, socketId, packetCount, packetWindow, isSpectator }>
 const socketMeta = new Map();
 // roomTimers: Map<roomCode, NodeJS.Timeout>  — idle cleanup timers
 const roomTimers = new Map();
@@ -66,11 +71,23 @@ function broadcastToRoom(roomCode, obj, excludeWs = null) {
   });
 }
 
+function broadcastToSpectators(roomCode, obj) {
+  const spectators = roomSpectators.get(roomCode);
+  if (!spectators) return;
+  const msg = JSON.stringify(obj);
+  spectators.forEach((ws) => {
+    if (ws.readyState === WebSocket.OPEN) ws.send(msg);
+  });
+}
+
 function dissolveRoom(roomCode, reason) {
   console.log(`[Relay] Dissolving room ${roomCode}: ${reason}`);
   broadcastToRoom(roomCode, { type: 'ROOM_DISSOLVED', reason });
+  broadcastToSpectators(roomCode, { type: 'ROOM_DISSOLVED', reason });
   rooms.delete(roomCode);
   roomHosts.delete(roomCode);
+  roomSpectators.delete(roomCode);
+  roomCreatedAt.delete(roomCode);
   const t1 = roomTimers.get(roomCode);
   if (t1) { clearTimeout(t1); roomTimers.delete(roomCode); }
   const t2 = hostGoneTimers.get(roomCode);
@@ -99,7 +116,16 @@ function leaveRoom(ws) {
   const meta = socketMeta.get(ws);
   if (!meta || !meta.roomCode) return;
 
-  const { roomCode, socketId } = meta;
+  const { roomCode, socketId, isSpectator } = meta;
+
+  if (isSpectator) {
+    const spectators = roomSpectators.get(roomCode);
+    if (spectators) spectators.delete(ws);
+    console.log(`[Relay] Spectator ${socketId} left room ${roomCode}`);
+    meta.roomCode = null;
+    return;
+  }
+
   const room = rooms.get(roomCode);
   if (room) {
     room.delete(ws);
@@ -108,12 +134,11 @@ function leaveRoom(ws) {
     if (isHost) {
       roomHosts.delete(roomCode);
       console.log(`[Relay] Host ${socketId} left room ${roomCode} (${room.size} clients remaining)`);
-      // Notify remaining clients that the host is gone
       broadcastToRoom(roomCode, { type: 'HOST_LEFT', socketId });
+      broadcastToSpectators(roomCode, { type: 'HOST_LEFT', socketId });
       if (room.size === 0) {
         scheduleRoomCleanup(roomCode);
       } else {
-        // Give 60s for clients to reconnect or gracefully quit
         scheduleHostGoneTimeout(roomCode);
       }
     } else {
@@ -144,11 +169,53 @@ function scheduleRoomCleanup(roomCode) {
   roomTimers.set(roomCode, timer);
 }
 
-// ── Server ────────────────────────────────────────────────────────────────────
+// ── HTTP Server (for GET /rooms) ─────────────────────────────────────────────
 
-const wss = new WebSocketServer({ port: PORT });
+const httpServer = http.createServer((req, res) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
-console.log(`[Relay] Madapoly relay server running on ws://0.0.0.0:${PORT}`);
+  if (req.method === 'OPTIONS') {
+    res.writeHead(204);
+    res.end();
+    return;
+  }
+
+  if (req.method === 'GET' && req.url === '/rooms') {
+    const list = [];
+    rooms.forEach((players, roomCode) => {
+      if (players.size > 0) {
+        list.push({
+          roomCode,
+          playerCount: players.size,
+          spectatorCount: (roomSpectators.get(roomCode) || new Set()).size,
+          createdAt: roomCreatedAt.get(roomCode) || 0,
+        });
+      }
+    });
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify(list));
+    return;
+  }
+
+  if (req.method === 'GET' && req.url === '/health') {
+    res.writeHead(200);
+    res.end('OK');
+    return;
+  }
+
+  res.writeHead(404);
+  res.end();
+});
+
+// ── WebSocket Server ──────────────────────────────────────────────────────────
+
+const wss = new WebSocketServer({ server: httpServer });
+
+httpServer.listen(PORT, () => {
+  console.log(`[Relay] Madapoly relay server running on ws://0.0.0.0:${PORT} (HTTP+WS)`);
+});
 
 wss.on('connection', (ws) => {
   // ── Max connections guard ──
@@ -159,7 +226,7 @@ wss.on('connection', (ws) => {
   }
 
   const socketId = generateSocketId();
-  socketMeta.set(ws, { roomCode: null, socketId, packetCount: 0, packetWindow: Date.now() });
+  socketMeta.set(ws, { roomCode: null, socketId, packetCount: 0, packetWindow: Date.now(), isSpectator: false });
 
   console.log(`[Relay] New connection: ${socketId} (total: ${wss.clients.size})`);
 
@@ -199,7 +266,6 @@ wss.on('connection', (ws) => {
     // ── Protocol handlers ──
 
     if (type === 'CREATE_ROOM') {
-      // Leave any existing room first
       leaveRoom(ws);
 
       let roomCode;
@@ -210,9 +276,10 @@ wss.on('connection', (ws) => {
       } while (rooms.has(roomCode) && attempts < 10);
 
       rooms.set(roomCode, new Set([ws]));
+      roomSpectators.set(roomCode, new Set());
+      roomCreatedAt.set(roomCode, Date.now());
       meta.roomCode = roomCode;
 
-      // Cancel any pending cleanup for this (unlikely) code
       const timer = roomTimers.get(roomCode);
       if (timer) { clearTimeout(timer); roomTimers.delete(roomCode); }
 
@@ -258,9 +325,35 @@ wss.on('connection', (ws) => {
       return;
     }
 
-    // ── Forward everything else to the room ──
+    if (type === 'JOIN_SPECTATOR') {
+      const { roomCode } = packet;
+      if (!roomCode) { send(ws, { type: 'SPECTATOR_ERROR', reason: 'Missing roomCode' }); return; }
+      const room = rooms.get(roomCode);
+      if (!room) { send(ws, { type: 'SPECTATOR_ERROR', reason: 'Room not found' }); return; }
+
+      leaveRoom(ws);
+      if (!roomSpectators.has(roomCode)) roomSpectators.set(roomCode, new Set());
+      roomSpectators.get(roomCode).add(ws);
+      meta.roomCode = roomCode;
+      meta.isSpectator = true;
+
+      console.log(`[Relay] ${meta.socketId} is now spectating room ${roomCode}`);
+      send(ws, { type: 'SPECTATOR_OK', roomCode, socketId: meta.socketId });
+      return;
+    }
+
+    // ── Guard: spectators cannot send game packets ──
+    if (meta.isSpectator) {
+      console.warn(`[Relay] Spectator ${meta.socketId} tried to send — ignored`);
+      return;
+    }
+
+    // ── Forward everything else to the room (and spectators if STATE_UPDATE) ──
     if (meta.roomCode) {
       broadcastToRoom(meta.roomCode, packet, ws);
+      if (type === 'STATE_UPDATE' || packet.type === 'STATE_UPDATE') {
+        broadcastToSpectators(meta.roomCode, packet);
+      }
     } else {
       console.warn(`[Relay] ${meta.socketId} tried to send outside a room`);
     }

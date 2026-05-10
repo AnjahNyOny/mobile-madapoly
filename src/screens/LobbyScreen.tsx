@@ -30,6 +30,19 @@ export const LobbyScreen = () => {
   const setAppScreen = useGameStore(s => s.setAppScreen);
   const syncState = useGameStore(s => s.syncState);
   const initGame = useGameStore(s => s.initGame);
+  const appScreen = useGameStore(s => s.appScreen);
+
+  // Bug fix: reset local UI state when store returns to lobby (e.g. after DisconnectModal "Quitter")
+  useEffect(() => {
+    if (appScreen === 'lobby') {
+      setMode('select');
+      setConnectedClients([]);
+      setRoomCode('');
+      setClientInputRoomCode('');
+      setConnectionError('');
+      setIsConnecting(false);
+    }
+  }, [appScreen]);
 
   useEffect(() => {
     // Register common network listeners
@@ -54,6 +67,7 @@ export const LobbyScreen = () => {
           const state = useGameStore.getState();
           if (state.appScreen === 'game' && state.networkRole === 'host') {
             setTimeout(() => {
+              // handleBankruptcy already calls broadcastIfHost internally
               useGameStore.getState().handleBankruptcy(client.playerId, null);
             }, 0);
           }

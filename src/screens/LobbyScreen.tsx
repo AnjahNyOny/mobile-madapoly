@@ -374,6 +374,7 @@ export const LobbyScreen = () => {
             <TouchableOpacity style={[styles.button, styles.buttonOnline]} onPress={handleOnlineHost} disabled={isConnecting}>
               {isConnecting ? <ActivityIndicator color="#FFF" /> : <Text style={styles.buttonText}>Créer une partie en ligne</Text>}
             </TouchableOpacity>
+            {isConnecting && <Text style={styles.connectingHint}>Connexion au relay... (peut prendre ~30s la 1ère fois)</Text>}
 
             <TextInput
               style={styles.input}
@@ -658,6 +659,7 @@ const styles = StyleSheet.create({
   },
   waitingSlotText: { color: 'rgba(255,255,255,0.35)', fontFamily: 'Inter_400Regular', fontSize: 14 },
   waitText: { color: '#AAA', fontFamily: 'Inter_400Regular', fontSize: 16, marginTop: 15, textAlign: 'center' },
+  connectingHint: { color: 'rgba(255,255,255,0.35)', fontFamily: 'Inter_400Regular', fontSize: 12, marginTop: 6, textAlign: 'center' },
   identityRow: {
     flexDirection: 'row',
     marginBottom: 10,

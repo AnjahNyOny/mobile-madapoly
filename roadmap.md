@@ -512,12 +512,7 @@ relay-server/  (Node.js, déployé sur Railway/Render)
 
 ### 12.6 Déploiement sur game.madapoly.com
 - [x] `npx expo export --platform web` → dossier `dist/` généré proprement
-- [ ] Déployer sur **Netlify** :
-  - New site → Import from GitHub → branche `online-app`
-  - Build command : `npx expo export --platform web`
-  - Publish directory : `dist`
-- [ ] Configurer le sous-domaine `game.madapoly.com` :
-  - Dans Netlify : Site settings → Domain management → Add custom domain → `game.madapoly.com`
-  - Chez ton registrar DNS : ajouter un enregistrement `CNAME game → <site>.netlify.app`
-- [ ] Vérifier HTTPS (automatique Netlify via Let's Encrypt)
+- [x] Déployé sur **Netlify** depuis branche `online-app`
+- [x] Sous-domaine `game.madapoly.com` configuré (CNAME → Netlify)
+- [x] HTTPS actif
 - [ ] Tester en production : mobile + navigateur dans la même room via `wss://mobile-madapoly.onrender.com`

@@ -318,12 +318,16 @@ export const NetworkManager = {
   // ── WEBSOCKET HOST — Create a relay room
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-  createRoom(): Promise<string> {
+  createRoom(attempt = 1): Promise<string> {
+    const MAX_ATTEMPTS = 4;
+    const RETRY_DELAY_MS = 3000;
+    const CONNECT_TIMEOUT_MS = 55000; // Render free tier can take ~30-50s to wake
+
     return new Promise((resolve, reject) => {
       NetworkManager._wsCleanup();
 
       const url = relayUrl;
-      console.log(`[Host/WS] Connecting to relay ${url}...`);
+      console.log(`[Host/WS] Connecting to relay ${url}... (attempt ${attempt}/${MAX_ATTEMPTS})`);
 
       try {
         wsSocket = new WebSocket(url);
@@ -332,13 +336,20 @@ export const NetworkManager = {
         return;
       }
 
+      let didResolve = false;
+
       const timeout = setTimeout(() => {
-        reject(new Error('Relay connection timeout'));
+        if (didResolve) return;
         wsSocket?.close();
-      }, 10000);
+        if (attempt < MAX_ATTEMPTS) {
+          console.warn(`[Host/WS] Connection timeout — retrying in ${RETRY_DELAY_MS / 1000}s...`);
+          setTimeout(() => NetworkManager.createRoom(attempt + 1).then(resolve).catch(reject), RETRY_DELAY_MS);
+        } else {
+          reject(new Error('Relay inaccessible. Vérifiez votre connexion.'));
+        }
+      }, CONNECT_TIMEOUT_MS);
 
       wsSocket.onopen = () => {
-        clearTimeout(timeout);
         console.log(`[Host/WS] Connected to relay, creating room...`);
         wsSocket!.send(JSON.stringify({ type: 'CREATE_ROOM' }));
       };
@@ -352,26 +363,29 @@ export const NetworkManager = {
         }
 
         if (packet.type === 'ROOM_CREATED') {
+          didResolve = true;
+          clearTimeout(timeout);
           wsRoomCode = packet.payload?.roomCode ?? (packet as any).roomCode;
           wsLocalSocketId = packet.payload?.socketId ?? (packet as any).socketId;
           console.log(`[Host/WS] Room created: ${wsRoomCode}`);
-          // No app-level heartbeat in WS mode: JS timers freeze in background,
-          // causing false client timeouts on resume. Relay PLAYER_LEFT is reliable.
           resolve(wsRoomCode!);
-
-          // Switch to game message handler
           wsSocket!.onmessage = NetworkManager._wsHostMessageHandler;
           return;
         }
 
-        // Unexpected message before room creation
         console.warn('[Host/WS] Unexpected message before ROOM_CREATED:', packet.type);
       };
 
       wsSocket.onerror = (e) => {
+        if (didResolve) return;
         clearTimeout(timeout);
         console.error('[Host/WS] WebSocket error:', e);
-        reject(new Error('Relay connection failed'));
+        if (attempt < MAX_ATTEMPTS) {
+          console.warn(`[Host/WS] Error — retrying in ${RETRY_DELAY_MS / 1000}s...`);
+          setTimeout(() => NetworkManager.createRoom(attempt + 1).then(resolve).catch(reject), RETRY_DELAY_MS);
+        } else {
+          reject(new Error('Relay inaccessible. Vérifiez votre connexion.'));
+        }
       };
 
       wsSocket.onclose = () => {
@@ -440,12 +454,16 @@ export const NetworkManager = {
   // ── WEBSOCKET CLIENT — Join a relay room
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-  joinRoom(roomCode: string): Promise<void> {
+  joinRoom(roomCode: string, attempt = 1): Promise<void> {
+    const MAX_ATTEMPTS = 4;
+    const RETRY_DELAY_MS = 3000;
+    const CONNECT_TIMEOUT_MS = 55000;
+
     return new Promise((resolve, reject) => {
       NetworkManager._wsCleanup();
 
       const url = relayUrl;
-      console.log(`[Client/WS] Connecting to relay ${url}...`);
+      console.log(`[Client/WS] Connecting to relay ${url}... (attempt ${attempt}/${MAX_ATTEMPTS})`);
 
       try {
         wsSocket = new WebSocket(url);
@@ -454,10 +472,18 @@ export const NetworkManager = {
         return;
       }
 
+      let didResolve = false;
+
       const timeout = setTimeout(() => {
-        reject(new Error('Relay connection timeout'));
+        if (didResolve) return;
         wsSocket?.close();
-      }, 10000);
+        if (attempt < MAX_ATTEMPTS) {
+          console.warn(`[Client/WS] Connection timeout — retrying in ${RETRY_DELAY_MS / 1000}s...`);
+          setTimeout(() => NetworkManager.joinRoom(roomCode, attempt + 1).then(resolve).catch(reject), RETRY_DELAY_MS);
+        } else {
+          reject(new Error('Relay inaccessible. Vérifiez votre connexion.'));
+        }
+      }, CONNECT_TIMEOUT_MS);
 
       wsSocket.onopen = () => {
         clearTimeout(timeout);
@@ -474,20 +500,18 @@ export const NetworkManager = {
         }
 
         if (packet.type === 'JOIN_OK') {
+          didResolve = true;
+          clearTimeout(timeout);
           wsRoomCode = (packet as any).roomCode;
           wsLocalSocketId = (packet as any).socketId;
           console.log(`[Client/WS] Joined room ${wsRoomCode} as ${wsLocalSocketId}`);
-          // No app-level heartbeat in WS mode: the relay handles keep-alive
-          // via native WS ping/pong every 30s. False positives when host app
-          // goes to background (JS timers freeze) caused spurious disconnects.
           resolve();
-
-          // Switch to game message handler
           wsSocket!.onmessage = NetworkManager._wsClientMessageHandler;
           return;
         }
 
         if (packet.type === 'JOIN_ERROR') {
+          didResolve = true;
           clearTimeout(timeout);
           reject(new Error((packet as any).reason || 'Cannot join room'));
           wsSocket?.close();
@@ -496,8 +520,14 @@ export const NetworkManager = {
       };
 
       wsSocket.onerror = () => {
+        if (didResolve) return;
         clearTimeout(timeout);
-        reject(new Error('Relay connection failed'));
+        if (attempt < MAX_ATTEMPTS) {
+          console.warn(`[Client/WS] Error — retrying in ${RETRY_DELAY_MS / 1000}s...`);
+          setTimeout(() => NetworkManager.joinRoom(roomCode, attempt + 1).then(resolve).catch(reject), RETRY_DELAY_MS);
+        } else {
+          reject(new Error('Relay inaccessible. Vérifiez votre connexion.'));
+        }
       };
 
       wsSocket.onclose = () => {
@@ -505,8 +535,7 @@ export const NetworkManager = {
         NetworkManager._stopClientHeartbeat();
         wsSocket = null;
         wsRoomCode = null;
-        // Network drop — no choice for the user
-        if (onDisconnectCallback) onDisconnectCallback('host');
+        if (!didResolve && onDisconnectCallback) onDisconnectCallback('host');
       };
     });
   },

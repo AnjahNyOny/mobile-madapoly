@@ -61,22 +61,23 @@ export const LobbyScreen = () => {
     });
 
     NetworkManager.onDisconnect((clientId) => {
-      setConnectedClients((prev) => {
-        const client = prev.find(c => c.socketId === clientId);
-        
-        // If we are the host and a client disconnected mid-game, forfeit them to prevent the game from getting stuck
-        if (clientId !== 'host' && client) {
-          const state = useGameStore.getState();
-          if (state.appScreen === 'game' && state.networkRole === 'host') {
-            setTimeout(() => {
-              // handleBankruptcy already calls broadcastIfHost internally
-              useGameStore.getState().handleBankruptcy(client.playerId, null);
-            }, 0);
-          }
+      console.log(`[Lobby] onDisconnect fired: clientId=${clientId}`);
+      const storeState = useGameStore.getState();
+      const allClients = storeState.connectedClients;
+      console.log(`[Lobby] connectedClients in store:`, JSON.stringify(allClients.map(c => c.socketId)));
+      const client = allClients.find(c => c.socketId === clientId);
+      console.log(`[Lobby] matched client:`, client ? client.playerId : 'NOT FOUND');
+
+      if (clientId !== 'host' && clientId !== 'host_left' && client) {
+        if (storeState.appScreen === 'game' && storeState.networkRole === 'host') {
+          console.log(`[Lobby] Triggering bankruptcy for player ${client.playerId}`);
+          setTimeout(() => {
+            useGameStore.getState().handleBankruptcy(client.playerId, null);
+          }, 0);
         }
-        
-        return prev.filter(c => c.socketId !== clientId);
-      });
+      }
+
+      setConnectedClients((prev) => prev.filter(c => c.socketId !== clientId));
 
       if (clientId === 'host' || clientId === 'host_left') {
         // We were a client and the host disconnected

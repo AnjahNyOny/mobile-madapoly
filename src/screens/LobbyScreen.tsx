@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { StyleSheet, View, Text, TouchableOpacity, TextInput, SafeAreaView, ActivityIndicator, Clipboard, ScrollView, Platform } from 'react-native';
 import { COLORS, SPACING, BORDER_RADIUS } from '../styles/theme';
 import { NetworkManager } from '../network/NetworkManager';
-import { useGameStore } from '../store/useGameStore';
+import { useGameStore, ConnectedClient } from '../store/useGameStore';
 import { RELAY_URL } from '../constants/config';
 
 type LobbyMode = 'select' | 'host' | 'client' | 'online_host' | 'online_client';
@@ -13,7 +13,9 @@ export const LobbyScreen = () => {
   const [mode, setMode] = useState<LobbyMode>('select');
   const [hostIp, setHostIp] = useState<string>('');
   const [clientInputIp, setClientInputIp] = useState<string>('');
-  const [connectedClients, setConnectedClients] = useState<{socketId: string, playerId: string, name?: string, avatar?: string}[]>([]);
+  // connectedClients lives in Zustand so it persists when LobbyScreen unmounts during game
+  const connectedClients = useGameStore(s => s.connectedClients);
+  const setConnectedClients = useGameStore(s => s.setConnectedClients);
   const [isConnecting, setIsConnecting] = useState(false);
   const [connectionError, setConnectionError] = useState('');
   const [botCount, setBotCount] = useState(3); // Default: 3 bots for solo, adjusts for network

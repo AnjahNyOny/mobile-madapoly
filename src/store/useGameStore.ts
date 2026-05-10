@@ -6,6 +6,14 @@ import { shuffleArray } from '../utils/mathHelpers';
 import { CHANCE_CARDS, COMMUNITY_CHEST_CARDS, GameCard } from '../constants/cards';
 import { NetworkManager } from '../network/NetworkManager';
 
+// ─── Connected client type (host-side, persisted across screen changes) ───
+export interface ConnectedClient {
+  socketId: string;
+  playerId: string;
+  name?: string;
+  avatar?: string;
+}
+
 // ─── Event types for UI notifications ───
 export interface GameEvent {
   type: 'info' | 'purchase' | 'tax' | 'jail' | 'go-bonus' | 'rent' | 'bankruptcy' | 'victory' | 'build' | 'sell' | 'error' | 'card';
@@ -52,6 +60,7 @@ interface GameActions {
   syncState: (newState: Partial<GameStoreState>) => void;
   setAppScreen: (screen: 'lobby' | 'game') => void;
   resetToLobby: () => void;
+  setConnectedClients: (clients: ConnectedClient[] | ((prev: ConnectedClient[]) => ConnectedClient[])) => void;
   
   // ── UI Modal States ──
   setSelectedPlayerIdForProps: (id: string | null) => void;
@@ -72,7 +81,8 @@ interface GameStoreState extends GameState {
   localPlayerName: string;
   localPlayerAvatar: string;
   appScreen: 'lobby' | 'game';
-  
+  connectedClients: ConnectedClient[];
+
   // UI Modal states (local only, not broadcasted)
   selectedPlayerIdForProps: string | null;
   selectedSpaceIdForDetail: string | null;
@@ -121,6 +131,7 @@ export const useGameStore = create<GameStoreState & GameActions>((setOriginal, g
   clientId: null,
   localPlayerId: null,
   appScreen: 'lobby',
+  connectedClients: [],
   
   // Initial UI states
   selectedPlayerIdForProps: null,
@@ -147,6 +158,14 @@ export const useGameStore = create<GameStoreState & GameActions>((setOriginal, g
 
   setNetworkStatus: (status) => {
     set({ networkStatus: status });
+  },
+
+  setConnectedClients: (clients) => {
+    if (typeof clients === 'function') {
+      set({ connectedClients: clients(get().connectedClients) });
+    } else {
+      set({ connectedClients: clients });
+    }
   },
 
   convertHostToBot: () => {
@@ -221,6 +240,7 @@ export const useGameStore = create<GameStoreState & GameActions>((setOriginal, g
       localPlayerName: 'Joueur',
       localPlayerAvatar: '🎩',
       appScreen: 'lobby',
+      connectedClients: [],
     });
   },
 

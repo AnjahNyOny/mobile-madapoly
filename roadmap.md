@@ -510,9 +510,14 @@ relay-server/  (Node.js, déployé sur Railway/Render)
 - [x] `LobbyScreen` : `content` à 85% de largeur — naturellement responsive
 - [ ] Tester sur Chrome, Safari, Firefox
 
-### 12.6 Déploiement sur madapoly.com
-- [ ] Configurer le build web Expo : `npx expo export --platform web` → dossier `dist/`
-- [ ] Déployer sur **Netlify** ou **Vercel** (drag & drop du dossier `dist/` ou CI/CD GitHub)
-- [ ] Configurer le domaine `madapoly.com` → DNS vers Netlify/Vercel
-- [ ] Vérifier HTTPS (automatique Netlify/Vercel)
-- [ ] Tester en production : mobile + web dans la même room via `wss://mobile-madapoly.onrender.com`
+### 12.6 Déploiement sur game.madapoly.com
+- [x] `npx expo export --platform web` → dossier `dist/` généré proprement
+- [ ] Déployer sur **Netlify** :
+  - New site → Import from GitHub → branche `online-app`
+  - Build command : `npx expo export --platform web`
+  - Publish directory : `dist`
+- [ ] Configurer le sous-domaine `game.madapoly.com` :
+  - Dans Netlify : Site settings → Domain management → Add custom domain → `game.madapoly.com`
+  - Chez ton registrar DNS : ajouter un enregistrement `CNAME game → <site>.netlify.app`
+- [ ] Vérifier HTTPS (automatique Netlify via Let's Encrypt)
+- [ ] Tester en production : mobile + navigateur dans la même room via `wss://mobile-madapoly.onrender.com`

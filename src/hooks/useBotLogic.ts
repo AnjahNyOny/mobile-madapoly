@@ -39,6 +39,8 @@ export const useBotLogic = () => {
   const skipPurchase = useGameStore((s) => s.skipPurchase);
   const endTurn = useGameStore((s) => s.endTurn);
 
+  const networkRole = useGameStore((s) => s.networkRole);
+
   // Ref pour stocker le timeout actif (cleanup-safe)
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -52,6 +54,9 @@ export const useBotLogic = () => {
     }
 
     // ── Guards ──
+    // Client devices don't run game logic — the host handles everything
+    // (bot actions, END_OF_TURN advances) and broadcasts state updates.
+    if (networkRole === 'client') return;
     if (players.length === 0) return;
     if (turnPhase === 'GAME_OVER') return; // Partie terminée — rien à faire
 
@@ -113,5 +118,5 @@ export const useBotLogic = () => {
         timeoutRef.current = null;
       }
     };
-  }, [turnPhase, currentPlayerIndex, players, board]);
+  }, [turnPhase, currentPlayerIndex, players, board, networkRole]);
 };

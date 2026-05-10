@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { GameState, Player, TurnPhase } from '../types';
 import { STATIC_BOARD } from '../constants';
 import { calculateRent } from '../utils/rentCalculator';
+import { NetworkManager } from '../network/NetworkManager';
 
 // ─── Event types for UI notifications ───
 export interface GameEvent {
@@ -21,11 +22,41 @@ interface GameActions {
   handleTimeout: () => void;
   clearEvent: () => void;
   handleBankruptcy: (bankruptPlayerId: string, creditorId: string | null) => void;
+  
+  // ── Network Integration ──
+  setNetworkRole: (role: 'local' | 'host' | 'client', clientId?: string | null) => void;
+  setLocalPlayerId: (id: string) => void;
+  setNetworkStatus: (status: 'connected' | 'disconnected') => void;
+  syncState: (newState: Partial<GameStoreState>) => void;
+  setAppScreen: (screen: 'lobby' | 'game') => void;
+  resetToLobby: () => void;
 }
+
+export type NetworkRole = 'local' | 'host' | 'client';
+
+export type NetworkStatus = 'connected' | 'disconnected';
 
 interface GameStoreState extends GameState {
   lastEvent: GameEvent | null;
+  networkRole: NetworkRole;
+  networkStatus: NetworkStatus;
+  clientId: string | null;
+  localPlayerId: string | null;
+  appScreen: 'lobby' | 'game';
 }
+
+// Helper to broadcast state if host
+const broadcastIfHost = (getState: () => GameStoreState) => {
+  const state = getState();
+  if (state.networkRole === 'host') {
+    // Broadcast the essential game state (omit functions)
+    const { players, board, currentPlayerIndex, turnPhase, consecutiveDoubles, lastDiceRoll, actionDeadline, lastEvent } = state;
+    NetworkManager.broadcast({
+      type: 'STATE_UPDATE',
+      payload: { players, board, currentPlayerIndex, turnPhase, consecutiveDoubles, lastDiceRoll, actionDeadline, lastEvent }
+    });
+  }
+};
 
 export const useGameStore = create<GameStoreState & GameActions>((set, get) => ({
   // --- ÉTAT INITIAL ---
@@ -37,9 +68,59 @@ export const useGameStore = create<GameStoreState & GameActions>((set, get) => (
   lastDiceRoll: null, 
   actionDeadline: null,
   lastEvent: null,
+  networkRole: 'local',
+  networkStatus: 'connected',
+  clientId: null,
+  localPlayerId: null,
+  appScreen: 'lobby',
 
   // --- ACTIONS ---
+  setAppScreen: (screen) => set({ appScreen: screen }),
+
+  setNetworkRole: (role, clientId = null) => {
+    set({ networkRole: role, clientId });
+  },
+
+  setLocalPlayerId: (id) => {
+    set({ localPlayerId: id });
+  },
+
+  setNetworkStatus: (status) => {
+    set({ networkStatus: status });
+  },
+
+  syncState: (newState) => {
+    // Preserve local-only fields that must never be overwritten by network sync
+    const { networkRole, networkStatus, clientId, localPlayerId, appScreen } = get();
+    set({ ...newState, networkRole, networkStatus, clientId, localPlayerId, appScreen });
+  },
+
+  resetToLobby: () => {
+    // Full cleanup: network + game state
+    NetworkManager.cleanup();
+    set({
+      // Reset game state
+      players: [],
+      board: {},
+      currentPlayerIndex: 0,
+      turnPhase: 'WAITING_FOR_DICE',
+      consecutiveDoubles: 0,
+      lastDiceRoll: null,
+      actionDeadline: null,
+      lastEvent: null,
+      // Reset network state
+      networkRole: 'local',
+      networkStatus: 'connected',
+      clientId: null,
+      localPlayerId: null,
+      appScreen: 'lobby',
+    });
+  },
+
   initGame: (playersSetup) => {
+    const { networkRole } = get();
+    if (networkRole === 'client') return; // Client ne peut pas initier
+
     const players = playersSetup.map(p => ({
       ...p, 
       balance: 1500, 
@@ -50,11 +131,17 @@ export const useGameStore = create<GameStoreState & GameActions>((set, get) => (
       isBankrupt: false,
     }));
     set({ players, turnPhase: 'WAITING_FOR_DICE', currentPlayerIndex: 0, lastEvent: null, board: {} });
+    broadcastIfHost(get);
   },
 
   rollDice: () => {
-    const { turnPhase, consecutiveDoubles, players, currentPlayerIndex } = get();
+    const { turnPhase, consecutiveDoubles, players, currentPlayerIndex, networkRole } = get();
     if (turnPhase !== 'WAITING_FOR_DICE') return;
+
+    if (networkRole === 'client') {
+      NetworkManager.sendMessage({ type: 'REQUEST_ROLL_DICE' });
+      return;
+    }
 
     const die1 = Math.floor(Math.random() * 6) + 1;
     const die2 = Math.floor(Math.random() * 6) + 1;
@@ -76,6 +163,7 @@ export const useGameStore = create<GameStoreState & GameActions>((set, get) => (
         turnPhase: 'END_OF_TURN',
         lastEvent: { type: 'jail', message: `${player.name} fait 3 doubles ! Direction la prison !`, emoji: '🚔' },
       });
+      broadcastIfHost(get);
       return;
     }
 
@@ -98,10 +186,15 @@ export const useGameStore = create<GameStoreState & GameActions>((set, get) => (
       turnPhase: 'ANIMATING_MOVEMENT',
       lastEvent: event,
     });
+    broadcastIfHost(get);
   },
 
   endAnimation: () => {
+    const { networkRole } = get();
+    if (networkRole === 'client') return; // Seul l'hôte/local gère la fin d'animation pour avancer l'état
+    
     set({ turnPhase: 'RESOLVING_SPACE' });
+    broadcastIfHost(get);
     get().resolveSpace();
   },
 
@@ -109,12 +202,15 @@ export const useGameStore = create<GameStoreState & GameActions>((set, get) => (
   // Le Dispatcher (Aiguilleur) — avec détection de faillite
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   resolveSpace: () => {
-    const { players, currentPlayerIndex, board } = get();
+    const { players, currentPlayerIndex, board, networkRole } = get();
+    if (networkRole === 'client') return; // Sécurité
+
     const player = players[currentPlayerIndex];
     const space = STATIC_BOARD[player.position];
 
     if (!space) {
         set({ turnPhase: 'END_OF_TURN' });
+        broadcastIfHost(get);
         return;
     }
 
@@ -133,6 +229,7 @@ export const useGameStore = create<GameStoreState & GameActions>((set, get) => (
                   lastEvent: { type: 'info', message: `${player.name} n'a pas assez d'Ariary pour ${space.name}`, emoji: '💸' },
                 });
             }
+            broadcastIfHost(get);
         } else if (propertyRecord.ownerId !== player.id) {
             // ── CALCUL AVANCÉ DU LOYER ──
             const owner = players.find(p => p.id === propertyRecord.ownerId);
@@ -173,15 +270,19 @@ export const useGameStore = create<GameStoreState & GameActions>((set, get) => (
               // ── FAILLITE : Vérifier si le payeur est en faillite ──
               if (newPlayers[renterIdx].balance < 0) {
                 get().handleBankruptcy(player.id, owner.id);
+              } else {
+                broadcastIfHost(get);
               }
             } else {
               set({ turnPhase: 'END_OF_TURN' });
+              broadcastIfHost(get);
             }
         } else {
             set({ 
               turnPhase: 'END_OF_TURN',
               lastEvent: { type: 'info', message: `${player.name} est chez soi à ${space.name}`, emoji: '🏡' },
             });
+            broadcastIfHost(get);
         }
         break;
       }
@@ -201,6 +302,8 @@ export const useGameStore = create<GameStoreState & GameActions>((set, get) => (
         // ── FAILLITE : Vérifier si la taxe ruine le joueur ──
         if (newPlayers[currentPlayerIndex].balance < 0) {
           get().handleBankruptcy(player.id, null); // null = dette envers la banque
+        } else {
+          broadcastIfHost(get);
         }
         break;
       }
@@ -216,6 +319,7 @@ export const useGameStore = create<GameStoreState & GameActions>((set, get) => (
           turnPhase: 'END_OF_TURN',
           lastEvent: { type: 'jail', message: `${player.name} va en prison !`, emoji: '👮' },
         });
+        broadcastIfHost(get);
         break;
       }
       case 'community-chest':
@@ -223,21 +327,29 @@ export const useGameStore = create<GameStoreState & GameActions>((set, get) => (
           turnPhase: 'END_OF_TURN',
           lastEvent: { type: 'info', message: `${player.name} tire une carte Magie-Magie`, emoji: '🃏' },
         });
+        broadcastIfHost(get);
         break;
       case 'chance':
         set({ 
           turnPhase: 'END_OF_TURN',
           lastEvent: { type: 'info', message: `${player.name} tire une carte Ankamantatra`, emoji: '❓' },
         });
+        broadcastIfHost(get);
         break;
       default:
         set({ turnPhase: 'END_OF_TURN' });
+        broadcastIfHost(get);
     }
   },
 
   buyProperty: () => {
-    const { players, currentPlayerIndex, board, turnPhase } = get();
+    const { players, currentPlayerIndex, board, turnPhase, networkRole } = get();
     if (turnPhase !== 'WAITING_FOR_DECISION') return;
+
+    if (networkRole === 'client') {
+      NetworkManager.sendMessage({ type: 'REQUEST_BUY_PROPERTY' });
+      return;
+    }
 
     const player = players[currentPlayerIndex];
     const space = STATIC_BOARD[player.position];
@@ -262,11 +374,18 @@ export const useGameStore = create<GameStoreState & GameActions>((set, get) => (
       actionDeadline: null,
       lastEvent: { type: 'purchase', message: `${player.name} achète ${space.name} pour ${space.price} AR !`, emoji: '🏠' },
     });
+    broadcastIfHost(get);
   },
 
   skipPurchase: () => {
-    const { turnPhase, players, currentPlayerIndex } = get();
+    const { turnPhase, players, currentPlayerIndex, networkRole } = get();
     if (turnPhase !== 'WAITING_FOR_DECISION') return;
+
+    if (networkRole === 'client') {
+      NetworkManager.sendMessage({ type: 'REQUEST_SKIP_PURCHASE' });
+      return;
+    }
+
     const player = players[currentPlayerIndex];
     const space = STATIC_BOARD[player.position];
     set({ 
@@ -274,15 +393,21 @@ export const useGameStore = create<GameStoreState & GameActions>((set, get) => (
       actionDeadline: null,
       lastEvent: { type: 'info', message: `${player.name} passe sur ${space?.name || 'la case'}`, emoji: '⏭️' },
     });
+    broadcastIfHost(get);
   },
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // endTurn — Saute les joueurs en faillite
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   endTurn: () => {
-    const { players, currentPlayerIndex, turnPhase } = get();
+    const { players, currentPlayerIndex, turnPhase, networkRole } = get();
     if (players.length === 0) return;
     if (turnPhase === 'GAME_OVER') return; // Ne rien faire si la partie est terminée
+
+    if (networkRole === 'client') {
+      NetworkManager.sendMessage({ type: 'REQUEST_END_TURN' });
+      return;
+    }
 
     // Trouver le prochain joueur non-en-faillite
     let nextIndex = (currentPlayerIndex + 1) % players.length;
@@ -301,6 +426,7 @@ export const useGameStore = create<GameStoreState & GameActions>((set, get) => (
       actionDeadline: null,
       lastEvent: null,
     });
+    broadcastIfHost(get);
   },
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -367,14 +493,19 @@ export const useGameStore = create<GameStoreState & GameActions>((set, get) => (
         },
       });
     }
+    broadcastIfHost(get);
   },
 
   clearEvent: () => {
+    const { networkRole } = get();
+    // clearEvent is UI only, no need to broadcast, just clear local state
     set({ lastEvent: null });
   },
 
   handleTimeout: () => {
-    const { turnPhase } = get();
+    const { turnPhase, networkRole } = get();
+    if (networkRole === 'client') return; // Host handles timeouts
+    
     if (turnPhase === 'WAITING_FOR_DICE') get().rollDice();
     else if (turnPhase === 'WAITING_FOR_DECISION') get().skipPurchase();
   },

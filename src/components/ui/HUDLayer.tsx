@@ -6,6 +6,7 @@ import { PlayerCard } from './PlayerCard';
 import { DiceDisplay } from './DiceDisplay';
 import { PropertyModal } from './PropertyModal';
 import { EventToast } from './EventToast';
+import { DisconnectModal } from './DisconnectModal';
 
 /**
  * HUDLayer is an absolute overlay on top of the entire GameScreen.
@@ -24,10 +25,12 @@ export const HUDLayer = () => {
   const turnPhase = useGameStore((s) => s.turnPhase);
   const lastDiceRoll = useGameStore((s) => s.lastDiceRoll);
   const rollDice = useGameStore((s) => s.rollDice);
+  const localPlayerId = useGameStore((s) => s.localPlayerId);
 
-  const canRoll = turnPhase === 'WAITING_FOR_DICE';
-  const isGameOver = turnPhase === 'GAME_OVER';
   const currentPlayer = players[currentPlayerIndex];
+  const isLocalPlayerTurn = currentPlayer?.id === localPlayerId;
+  const canRoll = turnPhase === 'WAITING_FOR_DICE' && isLocalPlayerTurn;
+  const isGameOver = turnPhase === 'GAME_OVER';
   const isBotDecision = turnPhase === 'WAITING_FOR_DECISION' && currentPlayer?.isBot;
 
   // Find the winner for GAME_OVER display
@@ -109,6 +112,9 @@ export const HUDLayer = () => {
 
       {/* ─── PROPERTY MODAL (full-screen overlay for human decisions) ─── */}
       <PropertyModal />
+
+      {/* ─── DISCONNECT MODAL (blocks screen on connection loss) ─── */}
+      <DisconnectModal />
     </View>
   );
 };

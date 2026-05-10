@@ -6,12 +6,16 @@ import * as SplashScreen from 'expo-splash-screen';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 import { GameScreen } from './src/screens/GameScreen';
+import { LobbyScreen } from './src/screens/LobbyScreen';
 import { COLORS } from './src/styles/theme';
+import { useGameStore } from './src/store/useGameStore';
 
 // Keep the splash screen visible while we fetch resources
 SplashScreen.preventAutoHideAsync();
 
 export default function App() {
+  const appScreen = useGameStore((s) => s.appScreen);
+
   const [fontsLoaded] = useFonts({
     Inter_400Regular,
     Inter_700Bold,
@@ -32,7 +36,7 @@ export default function App() {
     <GestureHandlerRootView style={{ flex: 1 }}>
       <View style={styles.container} onLayout={onLayoutRootView}>
         <StatusBar style="light" />
-        <GameScreen />
+        {appScreen === 'lobby' ? <LobbyScreen /> : <GameScreen />}
       </View>
     </GestureHandlerRootView>
   );

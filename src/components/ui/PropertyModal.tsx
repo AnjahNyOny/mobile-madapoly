@@ -34,9 +34,12 @@ export const PropertyModal = () => {
   const turnPhase = useGameStore((s) => s.turnPhase);
   const buyProperty = useGameStore((s) => s.buyProperty);
   const skipPurchase = useGameStore((s) => s.skipPurchase);
+  const localPlayerId = useGameStore((s) => s.localPlayerId);
 
   const currentPlayer = players[currentPlayerIndex];
-  const isVisible = turnPhase === 'WAITING_FOR_DECISION' && currentPlayer && !currentPlayer.isBot;
+  // Only show for the LOCAL human player (not for bots, not for other devices' players)
+  const isLocalPlayer = currentPlayer?.id === localPlayerId;
+  const isVisible = turnPhase === 'WAITING_FOR_DECISION' && currentPlayer && !currentPlayer.isBot && isLocalPlayer;
   const space = currentPlayer ? STATIC_BOARD[currentPlayer.position] : null;
   const shouldShow = isVisible && space;
 
@@ -58,7 +61,10 @@ export const PropertyModal = () => {
         setTimeLeft((prev) => {
           if (prev <= 1) {
             clearInterval(timerRef.current!);
-            skipPurchase();
+            // IMPORTANT: Defer skipPurchase to avoid "Cannot update a component 
+            // while rendering a different component". Calling a Zustand action 
+            // inside a setState updater causes cascading renders.
+            setTimeout(() => skipPurchase(), 0);
             return 0;
           }
           return prev - 1;

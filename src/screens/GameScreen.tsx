@@ -24,7 +24,6 @@ const SPRING_CONFIG = { damping: 15, stiffness: 90, mass: 1 };
 
 export const GameScreen = () => {
   // ── Zustand selectors (only what GameScreen needs) ──
-  const initGame = useGameStore((s) => s.initGame);
   const turnPhase = useGameStore((s) => s.turnPhase);
   const players = useGameStore((s) => s.players);
   const currentPlayerIndex = useGameStore((s) => s.currentPlayerIndex);
@@ -86,13 +85,9 @@ export const GameScreen = () => {
     ],
   }));
 
-  // ── Initialize the game on mount ──
+  // ── Center camera on DÉPART when GameScreen mounts ──
+  // Game is already initialized by LobbyScreen before we get here.
   useEffect(() => {
-    initGame([
-      { id: 'player-1', name: 'Zaka', isBot: false },
-      { id: 'bot-1', name: 'Bot Mada', isBot: true },
-    ]);
-    // Initial camera position: center on DÉPART
     centerOnPosition(0);
   }, []);
 

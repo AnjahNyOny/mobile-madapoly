@@ -395,11 +395,37 @@ export const LobbyScreen = () => {
           <Text style={styles.ipText}>{hostIp || 'Chargement...'}</Text>
           
           <Text style={styles.subtitle}>Joueurs connectés : {connectedClients.length}</Text>
-          {connectedClients.length === 0 ? (
-            <Text style={styles.waitText}>En attente de joueurs...</Text>
-          ) : (
-            connectedClients.map((c, i) => <Text key={c.socketId} style={styles.clientText}>• Joueur {i + 2} ({c.socketId.split(':')[0]})</Text>)
-          )}
+          <View style={styles.playerCardsList}>
+            {/* Host card (always first) */}
+            <View style={styles.playerCardItem}>
+              <Text style={styles.playerCardAvatar}>{localPlayerAvatar || '🎩'}</Text>
+              <View style={styles.playerCardInfo}>
+                <Text style={styles.playerCardName}>{localPlayerName || 'Hôte'}</Text>
+                <Text style={styles.playerCardRole}>Hôte</Text>
+              </View>
+              <View style={styles.playerCardReady}>
+                <Text style={styles.playerCardReadyText}>✓</Text>
+              </View>
+            </View>
+            {connectedClients.length === 0 ? (
+              <View style={styles.waitingSlot}>
+                <Text style={styles.waitingSlotText}>En attente de joueurs...</Text>
+              </View>
+            ) : (
+              connectedClients.map((c, i) => (
+                <View key={c.socketId} style={styles.playerCardItem}>
+                  <Text style={styles.playerCardAvatar}>{c.avatar || '🎮'}</Text>
+                  <View style={styles.playerCardInfo}>
+                    <Text style={styles.playerCardName}>{c.name || `Joueur ${i + 2}`}</Text>
+                    <Text style={styles.playerCardRole}>Client</Text>
+                  </View>
+                  <View style={styles.playerCardReady}>
+                    <Text style={styles.playerCardReadyText}>✓</Text>
+                  </View>
+                </View>
+              ))
+            )}
+          </View>
 
           {/* Bot count selector for host */}
           {maxBotsForHost > 0 && (
@@ -447,7 +473,14 @@ export const LobbyScreen = () => {
           <Text style={styles.title}>MADAPOLY</Text>
           <View style={styles.content}>
           <Text style={styles.subtitle}>Connecté à {clientInputIp}</Text>
-          <ActivityIndicator size="large" color={COLORS.primary} style={{ marginTop: 40 }} />
+          <View style={[styles.playerCardItem, { marginTop: 30, width: '100%' }]}>
+            <Text style={styles.playerCardAvatar}>{localPlayerAvatar || '🎮'}</Text>
+            <View style={styles.playerCardInfo}>
+              <Text style={styles.playerCardName}>{localPlayerName || 'Vous'}</Text>
+              <Text style={styles.playerCardRole}>Connecté ✓</Text>
+            </View>
+          </View>
+          <ActivityIndicator size="large" color={COLORS.primary} style={{ marginTop: 30 }} />
           <Text style={styles.waitText}>En attente de l'hôte pour commencer...</Text>
 
           <TouchableOpacity style={[styles.buttonTextOnly, { marginTop: 40 }]} onPress={() => { NetworkManager.disconnect(); setMode('select'); }}>
@@ -470,18 +503,38 @@ export const LobbyScreen = () => {
           <Text style={styles.waitText}>Partagez ce code avec vos amis</Text>
 
           <Text style={[styles.subtitle, { marginTop: 30 }]}>Joueurs connectés : {connectedClients.length}</Text>
-          {connectedClients.length === 0 ? (
-            <>
-              <ActivityIndicator size="small" color={COLORS.primary} style={{ marginTop: 10 }} />
-              <Text style={styles.waitText}>En attente de joueurs...</Text>
-            </>
-          ) : (
-            connectedClients.map((c, i) => (
-              <Text key={c.socketId} style={styles.clientText}>
-                {c.avatar || '🎮'} {c.name || `Joueur ${i + 2}`}
-              </Text>
-            ))
-          )}
+          <View style={styles.playerCardsList}>
+            {/* Host card */}
+            <View style={styles.playerCardItem}>
+              <Text style={styles.playerCardAvatar}>{localPlayerAvatar || '🎩'}</Text>
+              <View style={styles.playerCardInfo}>
+                <Text style={styles.playerCardName}>{localPlayerName || 'Hôte'}</Text>
+                <Text style={styles.playerCardRole}>Hôte 👑</Text>
+              </View>
+              <View style={styles.playerCardReady}>
+                <Text style={styles.playerCardReadyText}>✓</Text>
+              </View>
+            </View>
+            {connectedClients.length === 0 ? (
+              <View style={styles.waitingSlot}>
+                <ActivityIndicator size="small" color={COLORS.primary} style={{ marginRight: 10 }} />
+                <Text style={styles.waitingSlotText}>En attente de joueurs...</Text>
+              </View>
+            ) : (
+              connectedClients.map((c, i) => (
+                <View key={c.socketId} style={styles.playerCardItem}>
+                  <Text style={styles.playerCardAvatar}>{c.avatar || '🎮'}</Text>
+                  <View style={styles.playerCardInfo}>
+                    <Text style={styles.playerCardName}>{c.name || `Joueur ${i + 2}`}</Text>
+                    <Text style={styles.playerCardRole}>En ligne</Text>
+                  </View>
+                  <View style={styles.playerCardReady}>
+                    <Text style={styles.playerCardReadyText}>✓</Text>
+                  </View>
+                </View>
+              ))
+            )}
+          </View>
 
           {maxBotsForHost > 0 && (
             <>
@@ -530,7 +583,14 @@ export const LobbyScreen = () => {
           <View style={styles.content}>
           <Text style={styles.subtitle}>🌐 Connecté à la room</Text>
           <Text style={styles.roomCodeText}>{clientInputRoomCode.toUpperCase()}</Text>
-          <ActivityIndicator size="large" color={COLORS.primary} style={{ marginTop: 30 }} />
+          <View style={[styles.playerCardItem, { marginTop: 10, width: '100%' }]}>
+            <Text style={styles.playerCardAvatar}>{localPlayerAvatar || '🎮'}</Text>
+            <View style={styles.playerCardInfo}>
+              <Text style={styles.playerCardName}>{localPlayerName || 'Vous'}</Text>
+              <Text style={styles.playerCardRole}>Connecté ✓</Text>
+            </View>
+          </View>
+          <ActivityIndicator size="large" color={COLORS.primary} style={{ marginTop: 20 }} />
           <Text style={styles.waitText}>En attente de l'hôte pour commencer...</Text>
 
           <TouchableOpacity style={[styles.buttonTextOnly, { marginTop: 40 }]} onPress={() => { NetworkManager.cleanup(); setMode('select'); }}>
@@ -558,6 +618,41 @@ const styles = StyleSheet.create({
   input: { backgroundColor: '#FFF', width: '100%', padding: 18, borderRadius: BORDER_RADIUS.md, fontSize: 18, fontFamily: 'Inter_400Regular', marginBottom: 10, textAlign: 'center' },
   ipText: { fontSize: 38, fontFamily: 'Inter_900Black', color: '#FFF', marginVertical: 15 },
   clientText: { color: COLORS.secondary, fontFamily: 'Inter_700Bold', fontSize: 16, marginVertical: 8 },
+  // ── Player cards in lobby ──
+  playerCardsList: { width: '100%', gap: 10, marginTop: 12 },
+  playerCardItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.07)',
+    borderRadius: 14,
+    padding: 12,
+    gap: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
+  },
+  playerCardAvatar: { fontSize: 28 },
+  playerCardInfo: { flex: 1 },
+  playerCardName: { color: '#FFF', fontFamily: 'Inter_700Bold', fontSize: 16 },
+  playerCardRole: { color: 'rgba(255,255,255,0.45)', fontFamily: 'Inter_400Regular', fontSize: 13, marginTop: 2 },
+  playerCardReady: {
+    width: 28, height: 28, borderRadius: 14,
+    backgroundColor: 'rgba(31, 178, 90, 0.2)',
+    borderWidth: 1, borderColor: '#1FB25A',
+    justifyContent: 'center', alignItems: 'center',
+  },
+  playerCardReadyText: { color: '#1FB25A', fontSize: 14, fontFamily: 'Inter_900Black' },
+  waitingSlot: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.03)',
+    borderRadius: 14,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.06)',
+    borderStyle: 'dashed',
+  },
+  waitingSlotText: { color: 'rgba(255,255,255,0.35)', fontFamily: 'Inter_400Regular', fontSize: 14 },
   waitText: { color: '#AAA', fontFamily: 'Inter_400Regular', fontSize: 16, marginTop: 15, textAlign: 'center' },
   identityRow: {
     flexDirection: 'row',

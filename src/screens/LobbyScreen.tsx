@@ -23,8 +23,10 @@ export const LobbyScreen = () => {
   const [roomCode, setRoomCode] = useState<string>('');
   const [clientInputRoomCode, setClientInputRoomCode] = useState<string>('');
   const [roomCodeCopied, setRoomCodeCopied] = useState(false);
-  const [liveRooms, setLiveRooms] = useState<{ roomCode: string; playerCount: number; spectatorCount: number }[]>([]);
+  const [liveRooms, setLiveRooms] = useState<{ roomCode: string; roomName: string | null; status: string; playerCount: number; spectatorCount: number }[]>([]);
   const [isFetchingRooms, setIsFetchingRooms] = useState(false);
+  const [onlineRoomName, setOnlineRoomName] = useState<string>('');
+  const [pendingRequests, setPendingRequests] = useState<{ socketId: string; playerName: string; playerAvatar: string }[]>([]);
   
   const setNetworkRole = useGameStore(s => s.setNetworkRole);
   const setLocalPlayerId = useGameStore(s => s.setLocalPlayerId);
@@ -47,6 +49,16 @@ export const LobbyScreen = () => {
     } finally {
       setIsFetchingRooms(false);
     }
+  };
+
+  const handleApprove = (socketId: string) => {
+    NetworkManager.approveJoin(socketId);
+    setPendingRequests(prev => prev.filter(r => r.socketId !== socketId));
+  };
+
+  const handleReject = (socketId: string) => {
+    NetworkManager.rejectJoin(socketId, 'Refusé par l\'hôte');
+    setPendingRequests(prev => prev.filter(r => r.socketId !== socketId));
   };
 
   const handleWatch = async (code: string) => {
@@ -192,6 +204,13 @@ export const LobbyScreen = () => {
       }
     });
 
+    NetworkManager.onJoinRequest((socketId, playerName, playerAvatar) => {
+      setPendingRequests(prev => {
+        if (prev.find(r => r.socketId === socketId)) return prev;
+        return [...prev, { socketId, playerName, playerAvatar }];
+      });
+    });
+
     // We DO NOT close the server or disconnect on unmount, 
     // because the network must persist during the GameScreen!
   }, []); 
@@ -214,7 +233,8 @@ export const LobbyScreen = () => {
     NetworkManager.setTransport('websocket', RELAY_URL);
     setNetworkRole('host', 'host');
     try {
-      const code = await NetworkManager.createRoom();
+      const name = onlineRoomName.trim() || undefined;
+      const code = await NetworkManager.createRoom(name);
       setRoomCode(code);
       setMode('online_host');
     } catch (e) {
@@ -229,12 +249,13 @@ export const LobbyScreen = () => {
     const code = clientInputRoomCode.trim().toUpperCase();
     if (!code) return;
     setIsConnecting(true);
-    setConnectionError('');
+    setConnectionError('En attente d\'approbation de l\'hôte...');
     NetworkManager.setTransport('websocket', RELAY_URL);
     try {
-      await NetworkManager.joinRoom(code);
+      await NetworkManager.joinRoom(code, localPlayerName, localPlayerAvatar);
       setMode('online_client');
       setNetworkRole('client', 'client-' + Date.now());
+      setConnectionError('');
     } catch (e: any) {
       setConnectionError(e?.message || 'Connexion impossible. Vérifiez le code.');
       NetworkManager.setTransport('tcp');
@@ -305,6 +326,7 @@ export const LobbyScreen = () => {
       type: 'GAME_START',
       payload: { players, board, currentPlayerIndex, turnPhase, consecutiveDoubles, lastDiceRoll, actionDeadline, lastEvent }
     });
+    NetworkManager.notifyGameStart();
 
     setAppScreen('game');
   };
@@ -419,6 +441,15 @@ export const LobbyScreen = () => {
             <View style={styles.divider} />
             <Text style={styles.sectionTitle}>🌐  Jouer en Ligne</Text>
 
+            <TextInput
+              style={[styles.input, { marginBottom: 8 }]}
+              placeholder="Nom de la room (optionnel)"
+              placeholderTextColor="#999"
+              value={onlineRoomName}
+              onChangeText={setOnlineRoomName}
+              maxLength={32}
+              autoCorrect={false}
+            />
             <TouchableOpacity style={[styles.button, styles.buttonOnline]} onPress={handleOnlineHost} disabled={isConnecting}>
               {isConnecting ? <ActivityIndicator color="#FFF" /> : <Text style={styles.buttonText}>Créer une partie en ligne</Text>}
             </TouchableOpacity>
@@ -449,13 +480,28 @@ export const LobbyScreen = () => {
             ) : (
               liveRooms.map(room => (
                 <View key={room.roomCode} style={styles.liveRoomRow}>
-                  <View>
+                  <View style={{ flex: 1, marginRight: 8 }}>
+                    {room.roomName ? (
+                      <Text style={styles.liveRoomName}>{room.roomName}</Text>
+                    ) : null}
                     <Text style={styles.liveRoomCode}>{room.roomCode}</Text>
-                    <Text style={styles.liveRoomMeta}>{room.playerCount} joueur{room.playerCount > 1 ? 's' : ''}{room.spectatorCount > 0 ? ` · ${room.spectatorCount} spectateur${room.spectatorCount > 1 ? 's' : ''}` : ''}</Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 }}>
+                      <View style={[styles.statusBadge, room.status === 'lobby' ? styles.statusBadgeLobby : styles.statusBadgePlaying]}>
+                        <Text style={styles.statusBadgeText}>{room.status === 'lobby' ? 'Lobby' : 'En cours'}</Text>
+                      </View>
+                      <Text style={styles.liveRoomMeta}>{room.playerCount} joueur{room.playerCount > 1 ? 's' : ''}{room.spectatorCount > 0 ? ` · ${room.spectatorCount} 👁` : ''}</Text>
+                    </View>
                   </View>
-                  <TouchableOpacity style={styles.watchButton} onPress={() => handleWatch(room.roomCode)} disabled={isConnecting}>
-                    <Text style={styles.watchButtonText}>Regarder</Text>
-                  </TouchableOpacity>
+                  <View style={{ flexDirection: 'column', gap: 4, alignItems: 'flex-end' }}>
+                    {room.status === 'lobby' && (
+                      <TouchableOpacity style={styles.joinLiveButton} onPress={() => { setClientInputRoomCode(room.roomCode); }} disabled={isConnecting}>
+                        <Text style={styles.joinLiveButtonText}>Rejoindre</Text>
+                      </TouchableOpacity>
+                    )}
+                    <TouchableOpacity style={styles.watchButton} onPress={() => handleWatch(room.roomCode)} disabled={isConnecting}>
+                      <Text style={styles.watchButtonText}>👁 Regarder</Text>
+                    </TouchableOpacity>
+                  </View>
                 </View>
               ))
             )}
@@ -571,6 +617,9 @@ export const LobbyScreen = () => {
         <View style={styles.centeredContent}>
           <Text style={styles.title}>MADAPOLY</Text>
           <View style={styles.content}>
+          {onlineRoomName.trim() ? (
+            <Text style={styles.roomNameDisplay}>"{onlineRoomName.trim()}"</Text>
+          ) : null}
           <Text style={styles.subtitle}>Code de la room :</Text>
           <Text style={styles.roomCodeText}>{roomCode}</Text>
           <TouchableOpacity style={styles.copyButton} onPress={handleCopyRoomCode}>
@@ -634,6 +683,24 @@ export const LobbyScreen = () => {
               </View>
               <Text style={styles.stepperInfo}>{1 + connectedClients.length + botCount} joueurs au total</Text>
             </>
+          )}
+
+          {pendingRequests.length > 0 && (
+            <View style={styles.pendingSection}>
+              <Text style={styles.pendingSectionTitle}>Demandes de rejoindre</Text>
+              {pendingRequests.map(req => (
+                <View key={req.socketId} style={styles.pendingRow}>
+                  <Text style={styles.pendingAvatar}>{req.playerAvatar}</Text>
+                  <Text style={styles.pendingName}>{req.playerName}</Text>
+                  <TouchableOpacity style={styles.approveButton} onPress={() => handleApprove(req.socketId)}>
+                    <Text style={styles.approveButtonText}>✓</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={styles.rejectButton} onPress={() => handleReject(req.socketId)}>
+                    <Text style={styles.rejectButtonText}>✕</Text>
+                  </TouchableOpacity>
+                </View>
+              ))}
+            </View>
           )}
 
           <TouchableOpacity
@@ -739,6 +806,23 @@ const styles = StyleSheet.create({
   liveRoomMeta: { color: 'rgba(255,255,255,0.45)', fontFamily: 'Inter_400Regular', fontSize: 12, marginTop: 2 },
   watchButton: { backgroundColor: COLORS.primary, borderRadius: 8, paddingHorizontal: 14, paddingVertical: 7 },
   watchButtonText: { color: '#FFF', fontFamily: 'Inter_700Bold', fontSize: 13 },
+  roomNameDisplay: { color: COLORS.primary, fontFamily: 'Inter_700Bold', fontSize: 17, marginBottom: 6, textAlign: 'center' },
+  liveRoomName: { color: '#FFF', fontFamily: 'Inter_700Bold', fontSize: 14 },
+  statusBadge: { borderRadius: 6, paddingHorizontal: 7, paddingVertical: 2 },
+  statusBadgeLobby: { backgroundColor: 'rgba(34,197,94,0.25)' },
+  statusBadgePlaying: { backgroundColor: 'rgba(239,68,68,0.25)' },
+  statusBadgeText: { color: '#FFF', fontFamily: 'Inter_400Regular', fontSize: 11 },
+  joinLiveButton: { backgroundColor: '#22C55E', borderRadius: 8, paddingHorizontal: 12, paddingVertical: 6 },
+  joinLiveButtonText: { color: '#FFF', fontFamily: 'Inter_700Bold', fontSize: 12 },
+  pendingSection: { width: '100%', backgroundColor: 'rgba(255,165,0,0.1)', borderRadius: 12, padding: 12, marginTop: 16, borderWidth: 1, borderColor: 'rgba(255,165,0,0.3)' },
+  pendingSectionTitle: { color: '#FFA500', fontFamily: 'Inter_700Bold', fontSize: 13, marginBottom: 8 },
+  pendingRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 8 },
+  pendingAvatar: { fontSize: 22, marginRight: 8 },
+  pendingName: { flex: 1, color: '#FFF', fontFamily: 'Inter_400Regular', fontSize: 14 },
+  approveButton: { backgroundColor: '#22C55E', borderRadius: 8, width: 34, height: 34, alignItems: 'center', justifyContent: 'center', marginRight: 6 },
+  approveButtonText: { color: '#FFF', fontFamily: 'Inter_700Bold', fontSize: 16 },
+  rejectButton: { backgroundColor: '#EF4444', borderRadius: 8, width: 34, height: 34, alignItems: 'center', justifyContent: 'center' },
+  rejectButtonText: { color: '#FFF', fontFamily: 'Inter_700Bold', fontSize: 16 },
   identityRow: {
     flexDirection: 'row',
     marginBottom: 10,

@@ -69,6 +69,7 @@ export type MessageHandler = (packet: NetworkPacket, clientId?: string) => void;
 let onMessageCallback: MessageHandler | null = null;
 let onConnectionCallback: ((clientId: string) => void) | null = null;
 let onDisconnectCallback: ((clientId: string) => void) | null = null;
+let onJoinRequestCallback: ((socketId: string, playerName: string, playerAvatar: string) => void) | null = null;
 
 export const NetworkManager = {
 
@@ -318,7 +319,8 @@ export const NetworkManager = {
   // ── WEBSOCKET HOST — Create a relay room
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-  createRoom(attempt = 1): Promise<string> {
+  createRoom(roomName?: string, attempt?: number): Promise<string> {
+    const _attempt = attempt ?? 1;
     const MAX_ATTEMPTS = 4;
     const RETRY_DELAY_MS = 3000;
     const CONNECT_TIMEOUT_MS = 55000; // Render free tier can take ~30-50s to wake
@@ -327,7 +329,7 @@ export const NetworkManager = {
       NetworkManager._wsCleanup();
 
       const url = relayUrl;
-      console.log(`[Host/WS] Connecting to relay ${url}... (attempt ${attempt}/${MAX_ATTEMPTS})`);
+      console.log(`[Host/WS] Connecting to relay ${url}... (attempt ${_attempt}/${MAX_ATTEMPTS})`);
 
       try {
         wsSocket = new WebSocket(url);
@@ -341,9 +343,9 @@ export const NetworkManager = {
       const timeout = setTimeout(() => {
         if (didResolve) return;
         wsSocket?.close();
-        if (attempt < MAX_ATTEMPTS) {
+        if (_attempt < MAX_ATTEMPTS) {
           console.warn(`[Host/WS] Connection timeout — retrying in ${RETRY_DELAY_MS / 1000}s...`);
-          setTimeout(() => NetworkManager.createRoom(attempt + 1).then(resolve).catch(reject), RETRY_DELAY_MS);
+          setTimeout(() => NetworkManager.createRoom(roomName, _attempt + 1).then(resolve).catch(reject), RETRY_DELAY_MS);
         } else {
           reject(new Error('Relay inaccessible. Vérifiez votre connexion.'));
         }
@@ -351,7 +353,7 @@ export const NetworkManager = {
 
       wsSocket.onopen = () => {
         console.log(`[Host/WS] Connected to relay, creating room...`);
-        wsSocket!.send(JSON.stringify({ type: 'CREATE_ROOM' }));
+        wsSocket!.send(JSON.stringify({ type: 'CREATE_ROOM', roomName: roomName || null }));
       };
 
       wsSocket.onmessage = (event) => {
@@ -380,9 +382,9 @@ export const NetworkManager = {
         if (didResolve) return;
         clearTimeout(timeout);
         console.error('[Host/WS] WebSocket error:', e);
-        if (attempt < MAX_ATTEMPTS) {
+        if (_attempt < MAX_ATTEMPTS) {
           console.warn(`[Host/WS] Error — retrying in ${RETRY_DELAY_MS / 1000}s...`);
-          setTimeout(() => NetworkManager.createRoom(attempt + 1).then(resolve).catch(reject), RETRY_DELAY_MS);
+          setTimeout(() => NetworkManager.createRoom(roomName, _attempt + 1).then(resolve).catch(reject), RETRY_DELAY_MS);
         } else {
           reject(new Error('Relay inaccessible. Vérifiez votre connexion.'));
         }
@@ -406,10 +408,16 @@ export const NetworkManager = {
     }
 
     // ── Relay control messages ──
+    if (packet.type === 'JOIN_REQUEST_RECEIVED') {
+      const { socketId, playerName, playerAvatar } = packet as any;
+      console.log(`[Host/WS] Join request from ${socketId} (${playerName})`);
+      if (onJoinRequestCallback) onJoinRequestCallback(socketId, playerName, playerAvatar);
+      return;
+    }
+
     if (packet.type === 'PLAYER_JOINED') {
       const relayId: string = (packet as any).socketId;
       console.log(`[Host/WS] Client joined relay: ${relayId}`);
-      // We'll get the real game clientId from ASSIGN flow; use relayId as temporary key
       wsConnectedClients.set(relayId, { socketId: relayId });
       clientLastPingTimestamp.set(relayId, Date.now());
       if (onConnectionCallback) onConnectionCallback(relayId);
@@ -454,7 +462,8 @@ export const NetworkManager = {
   // ── WEBSOCKET CLIENT — Join a relay room
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-  joinRoom(roomCode: string, attempt = 1): Promise<void> {
+  joinRoom(roomCode: string, playerName?: string, playerAvatar?: string, attempt?: number): Promise<void> {
+    const _attempt = attempt ?? 1;
     const MAX_ATTEMPTS = 4;
     const RETRY_DELAY_MS = 3000;
     const CONNECT_TIMEOUT_MS = 55000;
@@ -463,7 +472,7 @@ export const NetworkManager = {
       NetworkManager._wsCleanup();
 
       const url = relayUrl;
-      console.log(`[Client/WS] Connecting to relay ${url}... (attempt ${attempt}/${MAX_ATTEMPTS})`);
+      console.log(`[Client/WS] Connecting to relay ${url}... (attempt ${_attempt}/${MAX_ATTEMPTS})`);
 
       try {
         wsSocket = new WebSocket(url);
@@ -477,9 +486,9 @@ export const NetworkManager = {
       const timeout = setTimeout(() => {
         if (didResolve) return;
         wsSocket?.close();
-        if (attempt < MAX_ATTEMPTS) {
+        if (_attempt < MAX_ATTEMPTS) {
           console.warn(`[Client/WS] Connection timeout — retrying in ${RETRY_DELAY_MS / 1000}s...`);
-          setTimeout(() => NetworkManager.joinRoom(roomCode, attempt + 1).then(resolve).catch(reject), RETRY_DELAY_MS);
+          setTimeout(() => NetworkManager.joinRoom(roomCode, playerName, playerAvatar, _attempt + 1).then(resolve).catch(reject), RETRY_DELAY_MS);
         } else {
           reject(new Error('Relay inaccessible. Vérifiez votre connexion.'));
         }
@@ -487,8 +496,13 @@ export const NetworkManager = {
 
       wsSocket.onopen = () => {
         clearTimeout(timeout);
-        console.log(`[Client/WS] Connected to relay, joining room ${roomCode}...`);
-        wsSocket!.send(JSON.stringify({ type: 'JOIN_ROOM', roomCode }));
+        console.log(`[Client/WS] Connected to relay, sending join request for room ${roomCode}...`);
+        wsSocket!.send(JSON.stringify({
+          type: 'JOIN_REQUEST',
+          roomCode,
+          playerName: playerName || 'Joueur',
+          playerAvatar: playerAvatar || '🎩',
+        }));
       };
 
       wsSocket.onmessage = (event) => {
@@ -499,14 +513,22 @@ export const NetworkManager = {
           return;
         }
 
-        if (packet.type === 'JOIN_OK') {
+        if (packet.type === 'JOIN_ACCEPTED') {
           didResolve = true;
           clearTimeout(timeout);
           wsRoomCode = (packet as any).roomCode;
           wsLocalSocketId = (packet as any).socketId;
-          console.log(`[Client/WS] Joined room ${wsRoomCode} as ${wsLocalSocketId}`);
+          console.log(`[Client/WS] Join accepted for room ${wsRoomCode} as ${wsLocalSocketId}`);
           resolve();
           wsSocket!.onmessage = NetworkManager._wsClientMessageHandler;
+          return;
+        }
+
+        if (packet.type === 'JOIN_REJECTED') {
+          didResolve = true;
+          clearTimeout(timeout);
+          reject(new Error((packet as any).reason || 'Demande refusée par l\'hôte'));
+          wsSocket?.close();
           return;
         }
 
@@ -522,13 +544,13 @@ export const NetworkManager = {
       wsSocket.onerror = () => {
         if (didResolve) return;
         clearTimeout(timeout);
-        if (attempt < MAX_ATTEMPTS) {
+        if (_attempt < MAX_ATTEMPTS) {
           console.warn(`[Client/WS] Error — retrying in ${RETRY_DELAY_MS / 1000}s...`);
-          setTimeout(() => NetworkManager.joinRoom(roomCode, attempt + 1).then(resolve).catch(reject), RETRY_DELAY_MS);
+          setTimeout(() => NetworkManager.joinRoom(roomCode, playerName, playerAvatar, _attempt + 1).then(resolve).catch(reject), RETRY_DELAY_MS);
         } else {
           reject(new Error('Relay inaccessible. Vérifiez votre connexion.'));
         }
-      };
+      ;}
 
       wsSocket.onclose = () => {
         console.log('[Client/WS] Relay connection closed (network drop)');
@@ -741,6 +763,25 @@ export const NetworkManager = {
 
   onDisconnect(callback: (clientId: string) => void) {
     onDisconnectCallback = callback;
+  },
+
+  onJoinRequest(callback: (socketId: string, playerName: string, playerAvatar: string) => void) {
+    onJoinRequestCallback = callback;
+  },
+
+  approveJoin(socketId: string) {
+    if (!wsSocket || wsSocket.readyState !== WebSocket.OPEN || !wsRoomCode) return;
+    wsSocket.send(JSON.stringify({ type: 'JOIN_APPROVE', socketId, roomCode: wsRoomCode }));
+  },
+
+  rejectJoin(socketId: string, reason?: string) {
+    if (!wsSocket || wsSocket.readyState !== WebSocket.OPEN || !wsRoomCode) return;
+    wsSocket.send(JSON.stringify({ type: 'JOIN_REJECT', socketId, roomCode: wsRoomCode, reason }));
+  },
+
+  notifyGameStart() {
+    if (!wsSocket || wsSocket.readyState !== WebSocket.OPEN || !wsRoomCode) return;
+    wsSocket.send(JSON.stringify({ type: 'GAME_START', roomCode: wsRoomCode }));
   },
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

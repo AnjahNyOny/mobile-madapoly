@@ -31,6 +31,12 @@ const roomHosts = new Map();
 const roomSpectators = new Map();
 // roomCreatedAt: Map<roomCode, number>  — creation timestamp
 const roomCreatedAt = new Map();
+// roomNames: Map<roomCode, string>  — display name chosen by host
+const roomNames = new Map();
+// roomStatus: Map<roomCode, 'lobby'|'playing'>  — 'lobby' until game starts
+const roomStatus = new Map();
+// pendingJoinRequests: Map<roomCode, Map<socketId, {ws, playerName, playerAvatar}>>  — awaiting host approval
+const pendingJoinRequests = new Map();
 // socketMeta: Map<WebSocket, { roomCode, socketId, packetCount, packetWindow, isSpectator }>
 const socketMeta = new Map();
 // roomTimers: Map<roomCode, NodeJS.Timeout>  — idle cleanup timers
@@ -82,12 +88,20 @@ function broadcastToSpectators(roomCode, obj) {
 
 function dissolveRoom(roomCode, reason) {
   console.log(`[Relay] Dissolving room ${roomCode}: ${reason}`);
+  // Reject all pending requests
+  const pending = pendingJoinRequests.get(roomCode);
+  if (pending) {
+    pending.forEach(({ ws: pws }) => send(pws, { type: 'JOIN_REJECTED', reason: 'Room closed' }));
+  }
   broadcastToRoom(roomCode, { type: 'ROOM_DISSOLVED', reason });
   broadcastToSpectators(roomCode, { type: 'ROOM_DISSOLVED', reason });
   rooms.delete(roomCode);
   roomHosts.delete(roomCode);
   roomSpectators.delete(roomCode);
   roomCreatedAt.delete(roomCode);
+  roomNames.delete(roomCode);
+  roomStatus.delete(roomCode);
+  pendingJoinRequests.delete(roomCode);
   const t1 = roomTimers.get(roomCode);
   if (t1) { clearTimeout(t1); roomTimers.delete(roomCode); }
   const t2 = hostGoneTimers.get(roomCode);
@@ -188,6 +202,8 @@ const httpServer = http.createServer((req, res) => {
       if (players.size > 0) {
         list.push({
           roomCode,
+          roomName: roomNames.get(roomCode) || null,
+          status: roomStatus.get(roomCode) || 'lobby',
           playerCount: players.size,
           spectatorCount: (roomSpectators.get(roomCode) || new Set()).size,
           createdAt: roomCreatedAt.get(roomCode) || 0,
@@ -275,48 +291,130 @@ wss.on('connection', (ws) => {
         attempts++;
       } while (rooms.has(roomCode) && attempts < 10);
 
+      const roomName = (typeof packet.roomName === 'string' && packet.roomName.trim())
+        ? packet.roomName.trim().slice(0, 32)
+        : null;
+
       rooms.set(roomCode, new Set([ws]));
       roomSpectators.set(roomCode, new Set());
       roomCreatedAt.set(roomCode, Date.now());
+      roomNames.set(roomCode, roomName);
+      roomStatus.set(roomCode, 'lobby');
+      pendingJoinRequests.set(roomCode, new Map());
       meta.roomCode = roomCode;
 
       const timer = roomTimers.get(roomCode);
       if (timer) { clearTimeout(timer); roomTimers.delete(roomCode); }
 
       roomHosts.set(roomCode, ws);
-      console.log(`[Relay] Room ${roomCode} created by ${meta.socketId}`);
-      send(ws, { type: 'ROOM_CREATED', roomCode, socketId: meta.socketId });
+      console.log(`[Relay] Room ${roomCode} "${roomName || '(unnamed)'}" created by ${meta.socketId}`);
+      send(ws, { type: 'ROOM_CREATED', roomCode, roomName, socketId: meta.socketId });
       return;
     }
 
     if (type === 'JOIN_ROOM') {
+      // Direct join (legacy, no approval needed — used internally)
       const { roomCode } = packet;
-      if (!roomCode) {
-        send(ws, { type: 'JOIN_ERROR', reason: 'Missing roomCode' });
-        return;
-      }
+      if (!roomCode) { send(ws, { type: 'JOIN_ERROR', reason: 'Missing roomCode' }); return; }
 
       const room = rooms.get(roomCode);
-      if (!room) {
-        send(ws, { type: 'JOIN_ERROR', reason: 'Room not found' });
-        return;
-      }
-      if (room.size >= MAX_PLAYERS_PER_ROOM) {
-        send(ws, { type: 'JOIN_ERROR', reason: 'Room is full' });
-        return;
-      }
+      if (!room) { send(ws, { type: 'JOIN_ERROR', reason: 'Room not found' }); return; }
+      if (room.size >= MAX_PLAYERS_PER_ROOM) { send(ws, { type: 'JOIN_ERROR', reason: 'Room is full' }); return; }
 
-      leaveRoom(ws); // Leave previous room if any
+      leaveRoom(ws);
       room.add(ws);
       meta.roomCode = roomCode;
 
-      // Cancel pending cleanup if room was idle
       const timer = roomTimers.get(roomCode);
       if (timer) { clearTimeout(timer); roomTimers.delete(roomCode); }
 
       console.log(`[Relay] ${meta.socketId} joined room ${roomCode} (${room.size} players)`);
       send(ws, { type: 'JOIN_OK', roomCode, socketId: meta.socketId });
       broadcastToRoom(roomCode, { type: 'PLAYER_JOINED', socketId: meta.socketId }, ws);
+      return;
+    }
+
+    if (type === 'JOIN_REQUEST') {
+      // Client asks to join — host must approve
+      const { roomCode, playerName, playerAvatar } = packet;
+      if (!roomCode) { send(ws, { type: 'JOIN_REJECTED', reason: 'Missing roomCode' }); return; }
+
+      const room = rooms.get(roomCode);
+      if (!room) { send(ws, { type: 'JOIN_REJECTED', reason: 'Room not found' }); return; }
+      if (room.size >= MAX_PLAYERS_PER_ROOM) { send(ws, { type: 'JOIN_REJECTED', reason: 'Room is full' }); return; }
+      if (roomStatus.get(roomCode) === 'playing') { send(ws, { type: 'JOIN_REJECTED', reason: 'Game already started' }); return; }
+
+      const pending = pendingJoinRequests.get(roomCode) || new Map();
+      pending.set(meta.socketId, { ws, playerName: playerName || 'Joueur', playerAvatar: playerAvatar || '🎩' });
+      pendingJoinRequests.set(roomCode, pending);
+
+      const hostWs = roomHosts.get(roomCode);
+      if (hostWs) {
+        send(hostWs, { type: 'JOIN_REQUEST_RECEIVED', socketId: meta.socketId, playerName: playerName || 'Joueur', playerAvatar: playerAvatar || '🎩', roomCode });
+      }
+      console.log(`[Relay] Join request from ${meta.socketId} (${playerName}) for room ${roomCode}`);
+      return;
+    }
+
+    if (type === 'JOIN_APPROVE') {
+      // Host approves a pending join request
+      const { socketId: targetId, roomCode } = packet;
+      if (!targetId || !roomCode) return;
+
+      const hostWs = roomHosts.get(roomCode);
+      if (hostWs !== ws) { console.warn(`[Relay] Non-host tried to approve join`); return; }
+
+      const pending = pendingJoinRequests.get(roomCode);
+      const req = pending && pending.get(targetId);
+      if (!req) { send(ws, { type: 'JOIN_ERROR', reason: 'Request expired' }); return; }
+
+      const room = rooms.get(roomCode);
+      if (!room || room.size >= MAX_PLAYERS_PER_ROOM) {
+        send(req.ws, { type: 'JOIN_REJECTED', reason: 'Room is full' });
+        pending.delete(targetId);
+        return;
+      }
+
+      pending.delete(targetId);
+      leaveRoom(req.ws);
+      room.add(req.ws);
+      const reqMeta = socketMeta.get(req.ws);
+      if (reqMeta) reqMeta.roomCode = roomCode;
+
+      const timer = roomTimers.get(roomCode);
+      if (timer) { clearTimeout(timer); roomTimers.delete(roomCode); }
+
+      console.log(`[Relay] Host approved ${targetId} for room ${roomCode}`);
+      send(req.ws, { type: 'JOIN_ACCEPTED', roomCode, socketId: targetId });
+      broadcastToRoom(roomCode, { type: 'PLAYER_JOINED', socketId: targetId }, req.ws);
+      return;
+    }
+
+    if (type === 'JOIN_REJECT') {
+      // Host rejects a pending join request
+      const { socketId: targetId, roomCode, reason } = packet;
+      if (!targetId || !roomCode) return;
+
+      const hostWs = roomHosts.get(roomCode);
+      if (hostWs !== ws) return;
+
+      const pending = pendingJoinRequests.get(roomCode);
+      const req = pending && pending.get(targetId);
+      if (!req) return;
+
+      pending.delete(targetId);
+      send(req.ws, { type: 'JOIN_REJECTED', reason: reason || 'Host declined' });
+      console.log(`[Relay] Host rejected ${targetId} for room ${roomCode}`);
+      return;
+    }
+
+    if (type === 'GAME_START') {
+      // Host signals the game has started — room goes from lobby to playing
+      const { roomCode: rc } = meta;
+      if (!rc) return;
+      if (roomHosts.get(rc) !== ws) return;
+      roomStatus.set(rc, 'playing');
+      broadcastToRoom(rc, { type: 'GAME_START' }, ws);
       return;
     }
 

@@ -469,3 +469,46 @@ relay-server/  (Node.js, déployé sur Railway/Render)
 | `LobbyScreen.tsx` | IP input | Room Code | ✅ Étendu |
 | `src/constants/config.ts` | — | RELAY_URL | ✅ Nouveau |
 | `relay-server/server.js` | — | Relay Node.js | ✅ Nouveau |
+
+---
+
+## 🌐 Phase 12 : Version Web App (madapoly.com)
+
+> **Objectif :** Rendre Madapoly jouable dans un navigateur via `madapoly.com`, en partageant la logique existante (store, bots, réseau) et en adaptant les composants React Native via **React Native Web**.
+> **Branche :** `online-app`
+
+### 12.1 Setup React Native Web
+- [ ] Installer `react-native-web`, `react-dom`, `@expo/webpack-config`
+- [ ] Configurer `webpack` pour aliaser `react-native` → `react-native-web`
+- [ ] Vérifier que `npx expo start --web` démarre sans erreur critique
+- [ ] Ajouter `"web"` dans les `platforms` de `app.json`
+
+### 12.2 Audit & Corrections des Composants
+- [ ] Identifier tous les composants cassés sur web (liste via `npx expo start --web`)
+- [ ] Corriger les imports incompatibles (`SafeAreaView` → `react-native-safe-area-context`, etc.)
+- [ ] Adapter les styles `StyleSheet` qui utilisent des APIs mobiles-only (ex: `shadow*` iOS)
+- [ ] Vérifier les fonts (Inter) — utiliser `@expo-google-fonts` qui supporte le web
+
+### 12.3 Plateau de Jeu sur Web
+- [ ] Tester le rendu de `BoardView` + `SpaceTile` sur web (layouts absolus)
+- [ ] Adapter `react-native-reanimated` pour le web (support partiel — `withSpring`, `withTiming` fonctionnent)
+- [ ] Vérifier la caméra dynamique (pan/zoom) — `react-native-gesture-handler` a un support web via pointer events
+- [ ] Tester les animations de pions sur web
+
+### 12.4 Réseau & Relay sur Web
+- [ ] Vérifier que `NetworkManager` (WebSocket natif) fonctionne dans le navigateur — les WebSockets sont natifs au web, aucune adaptation nécessaire
+- [ ] Tester une partie en ligne entre mobile et navigateur (même room code)
+- [ ] Désactiver le mode TCP/LAN sur web (non applicable)
+
+### 12.5 UI & Responsive Web
+- [ ] Adapter le layout pour les grands écrans (desktop, tablette)
+- [ ] Ajouter des breakpoints : mobile < 768px, desktop ≥ 768px
+- [ ] Tester sur Chrome, Safari, Firefox
+- [ ] Ajouter `<meta>` viewport et favicon dans `web/index.html`
+
+### 12.6 Déploiement sur madapoly.com
+- [ ] Configurer le build web Expo : `npx expo export --platform web` → dossier `dist/`
+- [ ] Déployer sur **Netlify** ou **Vercel** (drag & drop du dossier `dist/` ou CI/CD GitHub)
+- [ ] Configurer le domaine `madapoly.com` → DNS vers Netlify/Vercel
+- [ ] Vérifier HTTPS (automatique Netlify/Vercel)
+- [ ] Tester en production : mobile + web dans la même room via `wss://mobile-madapoly.onrender.com`

@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <meta httpEquiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
+
+    <!-- Primary meta -->
+    <title>Madapoly — Monopoly Madagascar</title>
+    <meta name="description" content="Jouez au Monopoly Madagascar en ligne avec vos amis, depuis n'importe quel appareil." />
+    <meta name="theme-color" content="#1FB25A" />
+
+    <!-- Open Graph -->
+    <meta property="og:title" content="Madapoly" />
+    <meta property="og:description" content="Le Monopoly Madagascar en ligne — jouez avec vos amis depuis partout !" />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://madapoly.com" />
+
+    <!-- Favicon -->
+    <link rel="icon" type="image/png" href="/favicon.ico" />
+    <link rel="apple-touch-icon" href="/favicon.ico" />
+
+    <style>
+      /* Prevent white flash on load */
+      html, body { background-color: #0A0A0A; margin: 0; padding: 0; height: 100%; }
+
+      /* Center the app shell on wide screens */
+      #root {
+        display: flex;
+        justify-content: center;
+        align-items: stretch;
+        min-height: 100%;
+        background-color: #0A0A0A;
+      }
+
+      /* App shell: max width on desktop, full width on mobile */
+      #root > div {
+        width: 100%;
+        max-width: 480px;
+        position: relative;
+        background-color: #0A0A0A;
+        box-shadow: 0 0 60px rgba(0,0,0,0.6);
+      }
+
+      /* Desktop: subtle side panels */
+      @media (min-width: 520px) {
+        body {
+          background: linear-gradient(135deg, #0D1117 0%, #111820 100%);
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+  </body>
+</html>

@@ -1,5 +1,5 @@
 import React, { useEffect, useCallback } from 'react';
-import { StyleSheet, View, Dimensions } from 'react-native';
+import { StyleSheet, View, Dimensions, Platform } from 'react-native';
 import { GestureDetector, Gesture } from 'react-native-gesture-handler';
 import Animated, {
   useSharedValue,
@@ -17,7 +17,8 @@ import { TokenLayer } from '../components/board/TokenLayer';
 import { HUDLayer } from '../components/ui/HUDLayer';
 import { useBotLogic } from '../hooks/useBotLogic';
 
-const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
+const { width: _width, height: SCREEN_HEIGHT } = Dimensions.get('window');
+const SCREEN_WIDTH = Platform.OS === 'web' ? Math.min(_width, 480) : _width;
 
 // Camera animation configuration
 const SPRING_CONFIG = { damping: 15, stiffness: 90, mass: 1 };

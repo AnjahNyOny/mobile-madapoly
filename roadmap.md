@@ -504,10 +504,11 @@ relay-server/  (Node.js, déployé sur Railway/Render)
 - [ ] Tester une partie en ligne entre mobile et navigateur (même room code)
 
 ### 12.5 UI & Responsive Web
-- [ ] Adapter le layout pour les grands écrans (desktop, tablette)
-- [ ] Ajouter des breakpoints : mobile < 768px, desktop ≥ 768px
+- [x] Créer `web/index.html` : viewport, meta OG, theme-color, favicon
+- [x] CSS : app shell centré `max-width: 480px` sur desktop, fond dégradé latéral
+- [x] `GameScreen` : `SCREEN_WIDTH` borné à 480px sur web pour centrer la caméra correctement
+- [x] `LobbyScreen` : `content` à 85% de largeur — naturellement responsive
 - [ ] Tester sur Chrome, Safari, Firefox
-- [ ] Ajouter `<meta>` viewport et favicon dans `web/index.html`
 
 ### 12.6 Déploiement sur madapoly.com
 - [ ] Configurer le build web Expo : `npx expo export --platform web` → dossier `dist/`

@@ -47,7 +47,8 @@ interface GameActions {
   setNetworkRole: (role: 'local' | 'host' | 'client', clientId?: string | null) => void;
   setLocalPlayerId: (id: string) => void;
   setLocalPlayerInfo: (name: string, avatar: string) => void;
-  setNetworkStatus: (status: 'connected' | 'disconnected') => void;
+  setNetworkStatus: (status: 'connected' | 'disconnected' | 'host_disconnected') => void;
+  convertHostToBot: () => void;
   syncState: (newState: Partial<GameStoreState>) => void;
   setAppScreen: (screen: 'lobby' | 'game') => void;
   resetToLobby: () => void;
@@ -60,7 +61,7 @@ interface GameActions {
 
 export type NetworkRole = 'local' | 'host' | 'client';
 
-export type NetworkStatus = 'connected' | 'disconnected';
+export type NetworkStatus = 'connected' | 'disconnected' | 'host_disconnected';
 
 interface GameStoreState extends GameState {
   lastEvent: GameEvent | null;
@@ -146,6 +147,42 @@ export const useGameStore = create<GameStoreState & GameActions>((setOriginal, g
 
   setNetworkStatus: (status) => {
     set({ networkStatus: status });
+  },
+
+  convertHostToBot: () => {
+    const { players, localPlayerId, currentPlayerIndex } = get();
+    // The "host" player is the non-bot player who is NOT us (the client)
+    const hostPlayer = players.find(p => !p.isBot && p.id !== localPlayerId && !p.isBankrupt);
+    if (!hostPlayer) {
+      // No host player found — just resume as connected (already all bots)
+      set({ networkStatus: 'connected', networkRole: 'local' });
+      return;
+    }
+    const newPlayers = players.map(p =>
+      p.id === hostPlayer.id ? { ...p, isBot: true } : p
+    );
+    // Check if only bots remain after conversion
+    const activeHumans = newPlayers.filter(p => !p.isBot && !p.isBankrupt);
+    if (activeHumans.length === 0) {
+      // Trigger game over — no human players left
+      set({
+        players: newPlayers,
+        turnPhase: 'GAME_OVER',
+        networkStatus: 'connected',
+        networkRole: 'local',
+        lastEvent: { type: 'victory', message: "Plus aucun joueur humain — partie terminée !", emoji: '👑' },
+      });
+    } else {
+      set({
+        players: newPlayers,
+        networkStatus: 'connected',
+        networkRole: 'local',
+      });
+      // If it was the host's turn, skip it
+      if (players[currentPlayerIndex]?.id === hostPlayer.id) {
+        get().endTurn();
+      }
+    }
   },
 
   syncState: (newState) => {

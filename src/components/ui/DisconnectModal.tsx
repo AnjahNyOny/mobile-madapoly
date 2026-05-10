@@ -17,28 +17,32 @@ const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 /**
  * DisconnectModal — Full-screen blocking overlay shown when network
  * connection to the host is lost during gameplay.
- * 
- * Provides a single action: return to the Lobby, which cleans up
- * all network and game state via resetToLobby().
+ *
+ * - networkStatus === 'disconnected'      → client lost connection (no choice)
+ * - networkStatus === 'host_disconnected' → host left (offer: continue with bot OR quit)
  */
 export const DisconnectModal = () => {
   const networkStatus = useGameStore((s) => s.networkStatus);
   const networkRole = useGameStore((s) => s.networkRole);
   const resetToLobby = useGameStore((s) => s.resetToLobby);
+  const convertHostToBot = useGameStore((s) => s.convertHostToBot);
 
-  // Only relevant for network games (not local solo)
-  const isDisconnected = networkStatus === 'disconnected' && networkRole !== 'local';
+  const isVisible =
+    (networkStatus === 'disconnected' || networkStatus === 'host_disconnected') &&
+    networkRole !== 'local';
+
+  const isHostGone = networkStatus === 'host_disconnected';
 
   // ── Animation ──
   const progress = useSharedValue(0);
 
   useEffect(() => {
-    if (isDisconnected) {
+    if (isVisible) {
       progress.value = withSpring(1, { damping: 16, stiffness: 120, mass: 0.9 });
     } else {
       progress.value = withTiming(0, { duration: 200, easing: Easing.in(Easing.ease) });
     }
-  }, [isDisconnected]);
+  }, [isVisible]);
 
   const backdropStyle = useAnimatedStyle(() => ({
     opacity: interpolate(progress.value, [0, 1], [0, 1], Extrapolation.CLAMP),
@@ -53,7 +57,7 @@ export const DisconnectModal = () => {
     opacity: interpolate(progress.value, [0, 0.3, 1], [0, 1, 1], Extrapolation.CLAMP),
   }));
 
-  if (!isDisconnected) return null;
+  if (!isVisible) return null;
 
   return (
     <>
@@ -61,38 +65,70 @@ export const DisconnectModal = () => {
       <Animated.View style={[styles.backdrop, backdropStyle]} />
 
       {/* ── Modal Card ── */}
-      <Animated.View style={[styles.modalWrapper, cardStyle]} pointerEvents={isDisconnected ? 'auto' : 'none'}>
+      <Animated.View style={[styles.modalWrapper, cardStyle]} pointerEvents={isVisible ? 'auto' : 'none'}>
         <View style={styles.card}>
-          {/* Red danger strip */}
-          <View style={styles.dangerStrip} />
+          {/* Danger strip */}
+          <View style={[styles.dangerStrip, isHostGone && styles.dangerStripOrange]} />
 
           {/* Icon */}
-          <Text style={styles.icon}>📡</Text>
+          <Text style={styles.icon}>{isHostGone ? '🚪' : '📡'}</Text>
 
           {/* Title */}
-          <Text style={styles.title}>Connexion perdue</Text>
+          <Text style={styles.title}>
+            {isHostGone ? "L'hôte a quitté" : 'Connexion perdue'}
+          </Text>
 
           {/* Description */}
           <Text style={styles.description}>
-            La connexion avec l'Hôte a été interrompue.{'\n'}
-            La partie ne peut plus continuer.
+            {isHostGone
+              ? "L'hôte s'est déconnecté.\nQue souhaitez-vous faire ?"
+              : "La connexion avec l'Hôte a été interrompue.\nLa partie ne peut plus continuer."}
           </Text>
 
-          {/* Pulsing signal indicator */}
-          <View style={styles.statusRow}>
-            <View style={styles.statusDot} />
-            <Text style={styles.statusText}>Hôte inaccessible</Text>
-          </View>
+          {isHostGone ? (
+            /* ── Host gone: two choices ── */
+            <>
+              <View style={styles.statusRow}>
+                <View style={[styles.statusDot, styles.statusDotOrange]} />
+                <Text style={[styles.statusText, styles.statusTextOrange]}>Hôte déconnecté</Text>
+              </View>
 
-          {/* Return button */}
-          <TouchableOpacity
-            style={styles.returnButton}
-            onPress={resetToLobby}
-            activeOpacity={0.85}
-          >
-            <Text style={styles.returnButtonEmoji}>🏠</Text>
-            <Text style={styles.returnButtonText}>RETOUR AU LOBBY</Text>
-          </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.returnButton, styles.continueButton]}
+                onPress={convertHostToBot}
+                activeOpacity={0.85}
+              >
+                <Text style={styles.returnButtonEmoji}>🤖</Text>
+                <Text style={styles.returnButtonText}>CONTINUER (BOT)</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.returnButton, styles.quitButton]}
+                onPress={resetToLobby}
+                activeOpacity={0.85}
+              >
+                <Text style={styles.returnButtonEmoji}>🏠</Text>
+                <Text style={styles.returnButtonText}>QUITTER</Text>
+              </TouchableOpacity>
+            </>
+          ) : (
+            /* ── Full disconnect: only quit ── */
+            <>
+              <View style={styles.statusRow}>
+                <View style={styles.statusDot} />
+                <Text style={styles.statusText}>Hôte inaccessible</Text>
+              </View>
+
+              <TouchableOpacity
+                style={styles.returnButton}
+                onPress={resetToLobby}
+                activeOpacity={0.85}
+              >
+                <Text style={styles.returnButtonEmoji}>🏠</Text>
+                <Text style={styles.returnButtonText}>RETOUR AU LOBBY</Text>
+              </TouchableOpacity>
+            </>
+          )}
         </View>
       </Animated.View>
     </>
@@ -215,5 +251,27 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontFamily: 'Inter_900Black',
     letterSpacing: 2,
+  },
+
+  // ── Host gone variants ──
+  dangerStripOrange: {
+    backgroundColor: '#F57C00',
+  },
+  statusDotOrange: {
+    backgroundColor: '#F57C00',
+  },
+  statusTextOrange: {
+    color: '#F57C00',
+  },
+  continueButton: {
+    backgroundColor: '#2E7D32',
+    shadowColor: '#2E7D32',
+    marginBottom: 8,
+  },
+  quitButton: {
+    backgroundColor: '#424242',
+    shadowColor: '#000',
+    marginTop: 0,
+    marginBottom: 24,
   },
 });

@@ -97,3 +97,21 @@ ROADMAP : MONOPOLY MADAGASCAR
 [x] Ajustements ergonomiques et tests de performance (Game feel : Haptics et animations Reanimated avec withSpring).
 
 [x] Configuration finale pour mobile (Nettoyage, Métadonnées, app.json).
+
+
+## 📱 Environnement de Test & Build Actuel (Important)
+
+> **Note pour l'assistant :** Le développement et les tests de l'application s'effectuent via des "Custom Dev Clients" (et non Expo Go) en raison de l'utilisation de modules natifs (`react-native-tcp-socket`). 
+
+Voici la configuration matérielle et réseau utilisée pour valider le code :
+
+* **Matériel de développement :** Mac (Apple Silicon/Intel).
+* **Appareil iOS (L'Hôte TCP) :** * Testé sur un **iPhone physique**.
+    * Méthode de build : `npx expo prebuild` puis compilation via **Xcode** pour signer et installer l'application sur le téléphone.
+    * **Rôle réseau :** L'iPhone physique agit toujours comme **Hôte** de la partie pour exposer une véritable adresse IP locale (LAN) accessible sur le routeur Wi-Fi.
+* **Appareil Android (Le Client TCP) :** * Testé sur un **Émulateur Android** tournant sur le Mac.
+    * Méthode de build : `npx expo run:android` pour générer l'APK et l'installer sur l'émulateur.
+    * **Rôle réseau :** L'émulateur agit comme **Client**. Il se connecte à l'IP locale exposée par l'iPhone. (Note : L'inverse n'est pas possible à cause de l'isolation réseau de l'émulateur Android).
+* **Déploiement à chaud :** Une fois les applications natives installées sur les deux appareils, le serveur Metro (`npx expo start --dev-client`) est utilisé pour injecter le bundle JavaScript via le Wi-Fi.
+* 
+* pour tester : lancer relay (`npm start`) et ensuite lancer app sur les deux appareils : (`npx expo start --dev-client`)

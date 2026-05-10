@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { StyleSheet, View, Text, TouchableOpacity, TextInput, SafeAreaView, ActivityIndicator } from 'react-native';
+import { StyleSheet, View, Text, TouchableOpacity, TextInput, SafeAreaView, ActivityIndicator, Clipboard, ScrollView } from 'react-native';
 import { COLORS, SPACING, BORDER_RADIUS } from '../styles/theme';
 import { NetworkManager } from '../network/NetworkManager';
 import { useGameStore } from '../store/useGameStore';
+import { RELAY_URL } from '../constants/config';
 
-type LobbyMode = 'select' | 'host' | 'client';
+type LobbyMode = 'select' | 'host' | 'client' | 'online_host' | 'online_client';
 
 const AVATARS = ['🎩', '🚗', '🐕', '🚢', '👟', '🛒', '🐴', '🚜'];
 
@@ -16,6 +17,10 @@ export const LobbyScreen = () => {
   const [isConnecting, setIsConnecting] = useState(false);
   const [connectionError, setConnectionError] = useState('');
   const [botCount, setBotCount] = useState(3); // Default: 3 bots for solo, adjusts for network
+  // Online mode state
+  const [roomCode, setRoomCode] = useState<string>('');
+  const [clientInputRoomCode, setClientInputRoomCode] = useState<string>('');
+  const [roomCodeCopied, setRoomCodeCopied] = useState(false);
   
   const setNetworkRole = useGameStore(s => s.setNetworkRole);
   const setLocalPlayerId = useGameStore(s => s.setLocalPlayerId);
@@ -57,12 +62,14 @@ export const LobbyScreen = () => {
         return prev.filter(c => c.socketId !== clientId);
       });
 
-      if (clientId === 'host') {
+      if (clientId === 'host' || clientId === 'host_left') {
         // We were a client and the host disconnected
         const { appScreen } = useGameStore.getState();
         if (appScreen === 'game') {
-          // In-game: set status to disconnected → triggers DisconnectModal
-          useGameStore.getState().setNetworkStatus('disconnected');
+          // 'host_left' = intentional (HOST_LEFT relay msg) → offer bot choice
+          // 'host'      = network drop → fatal disconnect modal
+          const status = clientId === 'host_left' ? 'host_disconnected' : 'disconnected';
+          useGameStore.getState().setNetworkStatus(status);
         } else {
           // In lobby: just show error and go back to select
           setConnectionError('Hôte déconnecté');
@@ -153,6 +160,47 @@ export const LobbyScreen = () => {
     }
   };
 
+  const handleOnlineHost = async () => {
+    setIsConnecting(true);
+    setConnectionError('');
+    NetworkManager.setTransport('websocket', RELAY_URL);
+    setNetworkRole('host', 'host');
+    try {
+      const code = await NetworkManager.createRoom();
+      setRoomCode(code);
+      setMode('online_host');
+    } catch (e) {
+      setConnectionError('Impossible de créer la room. Vérifiez votre connexion.');
+      NetworkManager.setTransport('tcp');
+    } finally {
+      setIsConnecting(false);
+    }
+  };
+
+  const handleOnlineJoin = async () => {
+    const code = clientInputRoomCode.trim().toUpperCase();
+    if (!code) return;
+    setIsConnecting(true);
+    setConnectionError('');
+    NetworkManager.setTransport('websocket', RELAY_URL);
+    try {
+      await NetworkManager.joinRoom(code);
+      setMode('online_client');
+      setNetworkRole('client', 'client-' + Date.now());
+    } catch (e: any) {
+      setConnectionError(e?.message || 'Connexion impossible. Vérifiez le code.');
+      NetworkManager.setTransport('tcp');
+    } finally {
+      setIsConnecting(false);
+    }
+  };
+
+  const handleCopyRoomCode = () => {
+    Clipboard.setString(roomCode);
+    setRoomCodeCopied(true);
+    setTimeout(() => setRoomCodeCopied(false), 2000);
+  };
+
   const handleJoin = async () => {
     if (!clientInputIp) return;
     setIsConnecting(true);
@@ -238,89 +286,111 @@ export const LobbyScreen = () => {
 
   return (
     <SafeAreaView style={styles.container}>
-      <Text style={styles.title}>MADAPOLY</Text>
-      <Text style={styles.badge}>Mode Réseau Local (LAN)</Text>
-
       {connectionError ? <Text style={styles.errorText}>{connectionError}</Text> : null}
 
       {mode === 'select' && (
-        <View style={styles.content}>
-          <Text style={styles.stepperLabel}>Votre Identité</Text>
-          <View style={styles.identityRow}>
-            <TextInput
-              style={styles.nameInput}
-              value={localPlayerName}
-              onChangeText={(t) => setLocalPlayerInfo(t, localPlayerAvatar)}
-              placeholder="Votre pseudo"
-              placeholderTextColor="#999"
-              maxLength={12}
-            />
-          </View>
-          <View style={styles.avatarList}>
-            {AVATARS.map(a => (
-              <TouchableOpacity 
-                key={a} 
-                style={[styles.avatarBtn, localPlayerAvatar === a && styles.avatarBtnActive]}
-                onPress={() => setLocalPlayerInfo(localPlayerName, a)}
+        <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+          <Text style={styles.title}>MADAPOLY</Text>
+          <View style={styles.content}>
+            <Text style={styles.stepperLabel}>Votre Identité</Text>
+            <View style={styles.identityRow}>
+              <TextInput
+                style={styles.nameInput}
+                value={localPlayerName}
+                onChangeText={(t) => setLocalPlayerInfo(t, localPlayerAvatar)}
+                placeholder="Votre pseudo"
+                placeholderTextColor="#999"
+                maxLength={12}
+              />
+            </View>
+            <View style={styles.avatarList}>
+              {AVATARS.map(a => (
+                <TouchableOpacity
+                  key={a}
+                  style={[styles.avatarBtn, localPlayerAvatar === a && styles.avatarBtnActive]}
+                  onPress={() => setLocalPlayerInfo(localPlayerName, a)}
+                >
+                  <Text style={styles.avatarEmoji}>{a}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            <View style={styles.divider} />
+            <Text style={styles.sectionTitle}>🏠  Solo</Text>
+
+            {/* Bot count selector */}
+            <Text style={styles.stepperLabel}>🤖 Nombre de Bots</Text>
+            <View style={styles.stepper}>
+              <TouchableOpacity
+                style={[styles.stepperButton, botCount <= 1 && styles.stepperButtonDisabled]}
+                onPress={() => setBotCount(Math.max(1, botCount - 1))}
+                disabled={botCount <= 1}
               >
-                <Text style={styles.avatarEmoji}>{a}</Text>
+                <Text style={styles.stepperButtonText}>−</Text>
               </TouchableOpacity>
-            ))}
-          </View>
+              <Text style={styles.stepperValue}>{botCount}</Text>
+              <TouchableOpacity
+                style={[styles.stepperButton, botCount >= 3 && styles.stepperButtonDisabled]}
+                onPress={() => setBotCount(Math.min(3, botCount + 1))}
+                disabled={botCount >= 3}
+              >
+                <Text style={styles.stepperButtonText}>+</Text>
+              </TouchableOpacity>
+            </View>
+            <Text style={styles.stepperInfo}>{botCount + 1} joueurs au total</Text>
 
-          <View style={styles.divider} />
-
-          <TouchableOpacity style={styles.button} onPress={handleHost}>
-            <Text style={styles.buttonText}>Héberger une partie</Text>
-          </TouchableOpacity>
-          
-          <View style={styles.divider} />
-
-          <TextInput
-            style={styles.input}
-            placeholder="Ex: 192.168.1.15"
-            placeholderTextColor="#999"
-            value={clientInputIp}
-            onChangeText={setClientInputIp}
-            keyboardType="numbers-and-punctuation"
-            autoCapitalize="none"
-            autoCorrect={false}
-          />
-          <TouchableOpacity style={[styles.button, styles.buttonSecondary]} onPress={handleJoin} disabled={isConnecting}>
-            {isConnecting ? <ActivityIndicator color="#FFF" /> : <Text style={styles.buttonText}>Rejoindre</Text>}
-          </TouchableOpacity>
-          
-          <View style={styles.divider} />
-
-          {/* Bot count selector */}
-          <Text style={styles.stepperLabel}>🤖 Nombre de Bots</Text>
-          <View style={styles.stepper}>
-            <TouchableOpacity
-              style={[styles.stepperButton, botCount <= 1 && styles.stepperButtonDisabled]}
-              onPress={() => setBotCount(Math.max(1, botCount - 1))}
-              disabled={botCount <= 1}
-            >
-              <Text style={styles.stepperButtonText}>−</Text>
+            <TouchableOpacity style={styles.button} onPress={startSolo}>
+              <Text style={styles.buttonText}>Lancer la partie Solo</Text>
             </TouchableOpacity>
-            <Text style={styles.stepperValue}>{botCount}</Text>
-            <TouchableOpacity
-              style={[styles.stepperButton, botCount >= 3 && styles.stepperButtonDisabled]}
-              onPress={() => setBotCount(Math.min(3, botCount + 1))}
-              disabled={botCount >= 3}
-            >
-              <Text style={styles.stepperButtonText}>+</Text>
+
+            <View style={styles.divider} />
+            <Text style={styles.sectionTitle}>📶  Partie Locale (Wi-Fi)</Text>
+
+            <TouchableOpacity style={styles.button} onPress={handleHost}>
+              <Text style={styles.buttonText}>Héberger (LAN)</Text>
+            </TouchableOpacity>
+
+            <TextInput
+              style={styles.input}
+              placeholder="Ex: 192.168.1.15"
+              placeholderTextColor="#999"
+              value={clientInputIp}
+              onChangeText={setClientInputIp}
+              keyboardType="numbers-and-punctuation"
+              autoCapitalize="none"
+              autoCorrect={false}
+            />
+            <TouchableOpacity style={[styles.button, styles.buttonSecondary]} onPress={handleJoin} disabled={isConnecting}>
+              {isConnecting ? <ActivityIndicator color="#FFF" /> : <Text style={styles.buttonText}>Rejoindre (LAN)</Text>}
+            </TouchableOpacity>
+
+            <View style={styles.divider} />
+            <Text style={styles.sectionTitle}>🌐  Jouer en Ligne</Text>
+
+            <TouchableOpacity style={[styles.button, styles.buttonOnline]} onPress={handleOnlineHost} disabled={isConnecting}>
+              {isConnecting ? <ActivityIndicator color="#FFF" /> : <Text style={styles.buttonText}>Créer une partie en ligne</Text>}
+            </TouchableOpacity>
+
+            <TextInput
+              style={styles.input}
+              placeholder="Code de room (ex: TANA-4892)"
+              placeholderTextColor="#999"
+              value={clientInputRoomCode}
+              onChangeText={setClientInputRoomCode}
+              autoCapitalize="characters"
+              autoCorrect={false}
+            />
+            <TouchableOpacity style={[styles.button, styles.buttonOnlineSecondary]} onPress={handleOnlineJoin} disabled={isConnecting}>
+              {isConnecting ? <ActivityIndicator color="#FFF" /> : <Text style={styles.buttonText}>Rejoindre en ligne</Text>}
             </TouchableOpacity>
           </View>
-          <Text style={styles.stepperInfo}>{botCount + 1} joueurs au total</Text>
-          
-          <TouchableOpacity style={styles.button} onPress={startSolo}>
-            <Text style={styles.buttonText}>Lancer la partie Solo</Text>
-          </TouchableOpacity>
-        </View>
+        </ScrollView>
       )}
 
       {mode === 'host' && (
-        <View style={styles.content}>
+        <View style={styles.centeredContent}>
+          <Text style={styles.title}>MADAPOLY</Text>
+          <View style={styles.content}>
           <Text style={styles.subtitle}>Votre adresse IP :</Text>
           <Text style={styles.ipText}>{hostIp || 'Chargement...'}</Text>
           
@@ -368,18 +438,105 @@ export const LobbyScreen = () => {
           <TouchableOpacity style={styles.buttonTextOnly} onPress={() => { NetworkManager.closeServer(); setMode('select'); }}>
             <Text style={styles.linkText}>Annuler</Text>
           </TouchableOpacity>
+          </View>
         </View>
       )}
 
       {mode === 'client' && (
-        <View style={styles.content}>
+        <View style={styles.centeredContent}>
+          <Text style={styles.title}>MADAPOLY</Text>
+          <View style={styles.content}>
           <Text style={styles.subtitle}>Connecté à {clientInputIp}</Text>
           <ActivityIndicator size="large" color={COLORS.primary} style={{ marginTop: 40 }} />
           <Text style={styles.waitText}>En attente de l'hôte pour commencer...</Text>
-          
+
           <TouchableOpacity style={[styles.buttonTextOnly, { marginTop: 40 }]} onPress={() => { NetworkManager.disconnect(); setMode('select'); }}>
             <Text style={styles.linkText}>Quitter</Text>
           </TouchableOpacity>
+          </View>
+        </View>
+      )}
+
+      {/* ── ONLINE HOST VIEW ── */}
+      {mode === 'online_host' && (
+        <View style={styles.centeredContent}>
+          <Text style={styles.title}>MADAPOLY</Text>
+          <View style={styles.content}>
+          <Text style={styles.subtitle}>Code de la room :</Text>
+          <Text style={styles.roomCodeText}>{roomCode}</Text>
+          <TouchableOpacity style={styles.copyButton} onPress={handleCopyRoomCode}>
+            <Text style={styles.copyButtonText}>{roomCodeCopied ? '✓ Copié !' : 'Copier le code'}</Text>
+          </TouchableOpacity>
+          <Text style={styles.waitText}>Partagez ce code avec vos amis</Text>
+
+          <Text style={[styles.subtitle, { marginTop: 30 }]}>Joueurs connectés : {connectedClients.length}</Text>
+          {connectedClients.length === 0 ? (
+            <>
+              <ActivityIndicator size="small" color={COLORS.primary} style={{ marginTop: 10 }} />
+              <Text style={styles.waitText}>En attente de joueurs...</Text>
+            </>
+          ) : (
+            connectedClients.map((c, i) => (
+              <Text key={c.socketId} style={styles.clientText}>
+                {c.avatar || '🎮'} {c.name || `Joueur ${i + 2}`}
+              </Text>
+            ))
+          )}
+
+          {maxBotsForHost > 0 && (
+            <>
+              <Text style={[styles.stepperLabel, { marginTop: 20 }]}>🤖 Bots supplémentaires</Text>
+              <View style={styles.stepper}>
+                <TouchableOpacity
+                  style={[styles.stepperButton, botCount <= minBotsForHost && styles.stepperButtonDisabled]}
+                  onPress={() => setBotCount(Math.max(minBotsForHost, botCount - 1))}
+                  disabled={botCount <= minBotsForHost}
+                >
+                  <Text style={styles.stepperButtonText}>−</Text>
+                </TouchableOpacity>
+                <Text style={styles.stepperValue}>{botCount}</Text>
+                <TouchableOpacity
+                  style={[styles.stepperButton, botCount >= maxBotsForHost && styles.stepperButtonDisabled]}
+                  onPress={() => setBotCount(Math.min(maxBotsForHost, botCount + 1))}
+                  disabled={botCount >= maxBotsForHost}
+                >
+                  <Text style={styles.stepperButtonText}>+</Text>
+                </TouchableOpacity>
+              </View>
+              <Text style={styles.stepperInfo}>{1 + connectedClients.length + botCount} joueurs au total</Text>
+            </>
+          )}
+
+          <TouchableOpacity
+            style={[styles.button, styles.buttonOnline, { marginTop: 30 }]}
+            onPress={startGame}
+          >
+            <Text style={styles.buttonText}>
+              {connectedClients.length === 0 ? 'Lancer avec des Bots' : 'Lancer la partie'}
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity style={styles.buttonTextOnly} onPress={() => { NetworkManager.cleanup(); setConnectedClients([]); setRoomCode(''); setMode('select'); }}>
+            <Text style={styles.linkText}>Annuler</Text>
+          </TouchableOpacity>
+          </View>
+        </View>
+      )}
+
+      {/* ── ONLINE CLIENT VIEW ── */}
+      {mode === 'online_client' && (
+        <View style={styles.centeredContent}>
+          <Text style={styles.title}>MADAPOLY</Text>
+          <View style={styles.content}>
+          <Text style={styles.subtitle}>🌐 Connecté à la room</Text>
+          <Text style={styles.roomCodeText}>{clientInputRoomCode.toUpperCase()}</Text>
+          <ActivityIndicator size="large" color={COLORS.primary} style={{ marginTop: 30 }} />
+          <Text style={styles.waitText}>En attente de l'hôte pour commencer...</Text>
+
+          <TouchableOpacity style={[styles.buttonTextOnly, { marginTop: 40 }]} onPress={() => { NetworkManager.cleanup(); setMode('select'); }}>
+            <Text style={styles.linkText}>Quitter</Text>
+          </TouchableOpacity>
+          </View>
         </View>
       )}
     </SafeAreaView>
@@ -387,11 +544,14 @@ export const LobbyScreen = () => {
 };
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: COLORS.background, justifyContent: 'center', alignItems: 'center' },
-  title: { fontSize: 42, fontFamily: 'Inter_900Black', color: COLORS.primary, marginBottom: 5 },
+  container: { flex: 1, backgroundColor: COLORS.background },
+  scrollContent: { flexGrow: 1, justifyContent: 'center', alignItems: 'center', paddingVertical: 40 },
+  title: { fontSize: 42, fontFamily: 'Inter_900Black', color: COLORS.primary, marginBottom: 30 },
+  sectionTitle: { fontSize: 16, fontFamily: 'Inter_700Bold', color: COLORS.textSecondary, marginBottom: 12, alignSelf: 'flex-start' },
   badge: { fontSize: 14, fontFamily: 'Inter_700Bold', color: '#FFF', backgroundColor: '#333', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 12, overflow: 'hidden', marginBottom: 40 },
   subtitle: { fontSize: 18, fontFamily: 'Inter_700Bold', color: '#FFF', marginTop: 20 },
   content: { width: '85%', alignItems: 'center' },
+  centeredContent: { flex: 1, justifyContent: 'center', alignItems: 'center', width: '100%' },
   button: { backgroundColor: COLORS.primary, paddingVertical: 16, paddingHorizontal: 30, borderRadius: BORDER_RADIUS.md, width: '100%', alignItems: 'center', marginVertical: 10 },
   buttonSecondary: { backgroundColor: COLORS.secondary },
   buttonText: { color: '#FFF', fontFamily: 'Inter_700Bold', fontSize: 18 },
@@ -399,12 +559,6 @@ const styles = StyleSheet.create({
   ipText: { fontSize: 38, fontFamily: 'Inter_900Black', color: '#FFF', marginVertical: 15 },
   clientText: { color: COLORS.secondary, fontFamily: 'Inter_700Bold', fontSize: 16, marginVertical: 8 },
   waitText: { color: '#AAA', fontFamily: 'Inter_400Regular', fontSize: 16, marginTop: 15, textAlign: 'center' },
-  stepperInfo: {
-    fontFamily: 'Inter_400Regular',
-    color: '#888',
-    marginTop: 8,
-    marginBottom: 20,
-  },
   identityRow: {
     flexDirection: 'row',
     marginBottom: 10,
@@ -446,7 +600,7 @@ const styles = StyleSheet.create({
   avatarEmoji: {
     fontSize: 24,
   },
-  errorText: { color: '#E10214', fontFamily: 'Inter_700Bold', fontSize: 16, marginBottom: 20, textAlign: 'center' },
+  errorText: { color: '#E10214', fontFamily: 'Inter_700Bold', fontSize: 16, marginBottom: 20, textAlign: 'center', paddingHorizontal: 20 },
   divider: { height: 1, backgroundColor: '#333', width: '100%', marginVertical: 25 },
   buttonTextOnly: { marginTop: 10, padding: 10 },
   linkText: { color: '#999', fontFamily: 'Inter_400Regular', fontSize: 16, textDecorationLine: 'underline' },
@@ -458,4 +612,10 @@ const styles = StyleSheet.create({
   stepperButtonText: { color: '#FFF', fontSize: 22, fontFamily: 'Inter_900Black' },
   stepperValue: { color: '#FFF', fontSize: 32, fontFamily: 'Inter_900Black', minWidth: 40, textAlign: 'center' },
   stepperInfo: { color: '#AAA', fontFamily: 'Inter_400Regular', fontSize: 13, marginBottom: 16, textAlign: 'center' },
+  // ── Online ──
+  buttonOnline: { backgroundColor: '#1565C0' },
+  buttonOnlineSecondary: { backgroundColor: '#0D47A1' },
+  roomCodeText: { fontSize: 40, fontFamily: 'Inter_900Black', color: COLORS.accent, letterSpacing: 4, marginVertical: 12, textAlign: 'center' },
+  copyButton: { backgroundColor: '#2A2A2A', paddingVertical: 8, paddingHorizontal: 20, borderRadius: BORDER_RADIUS.md, marginBottom: 8, borderWidth: 1, borderColor: COLORS.accent },
+  copyButtonText: { color: COLORS.accent, fontFamily: 'Inter_700Bold', fontSize: 14 },
 });

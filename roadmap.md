@@ -346,21 +346,21 @@ relay-server/  (Node.js, déployé sur Railway/Render)
 
 > Le serveur relay est **intentionnellement minimaliste**. Il ne contient aucune logique de jeu. Son seul rôle : recevoir un paquet d'un joueur et le renvoyer aux autres membres de la même room.
 
-- [ ] Créer le dossier `relay-server/` à la racine du projet (dépôt séparé ou monorepo).
-- [ ] Stack : **Node.js + `ws`** (WebSocket natif, zéro dépendance lourde).
-- [ ] **Gestion des rooms :**
+- [x] Créer le dossier `relay-server/` à la racine du projet (dépôt séparé ou monorepo).
+- [x] Stack : **Node.js + `ws`** (WebSocket natif, zéro dépendance lourde).
+- [x] **Gestion des rooms :**
   - `rooms: Map<string, Set<WebSocket>>` — dictionnaire `roomCode → ensemble de sockets`.
   - Générer un code de room unique à 8 caractères alphanumériques (ex: `TANA-4892`).
   - Limiter à **4 connexions** par room (règle Monopoly).
-- [ ] **Protocoles gérés par le relay :**
+- [x] **Protocoles gérés par le relay :**
   - `{ type: 'CREATE_ROOM' }` → génère un `roomCode`, ajoute l'hôte, répond `{ type: 'ROOM_CREATED', roomCode }`.
   - `{ type: 'JOIN_ROOM', roomCode }` → ajoute le client à la room, diffuse `{ type: 'PLAYER_JOINED' }` à tous.
   - `{ type: 'LEAVE_ROOM' }` → retire le socket, diffuse `{ type: 'PLAYER_LEFT' }` aux autres.
   - Tous les autres types → **forward brut** à tous les membres de la room sauf l'expéditeur.
-- [ ] **Heartbeat côté serveur :** ping WebSocket natif toutes les 30s pour détecter les connexions fantômes.
-- [ ] **Nettoyage automatique :** si la room est vide depuis 60s, la supprimer de la mémoire.
+- [x] **Heartbeat côté serveur :** ping WebSocket natif toutes les 30s pour détecter les connexions fantômes.
+- [x] **Nettoyage automatique :** si la room est vide depuis 5min, la supprimer de la mémoire.
 - [ ] Déploiement cible : **Railway** ou **Render** (plan gratuit suffisant pour le prototype).
-- [ ] Variable d'environnement `PORT` pour la compatibilité avec les hébergeurs cloud.
+- [x] Variable d'environnement `PORT` pour la compatibilité avec les hébergeurs cloud.
 
 ---
 
@@ -368,27 +368,27 @@ relay-server/  (Node.js, déployé sur Railway/Render)
 
 > L'interface publique (`sendMessage`, `broadcast`, `onMessage`, `onConnection`, `onDisconnect`) reste **identique**. Seule l'implémentation interne change selon le transport actif.
 
-- [ ] Ajouter un type `TransportMode = 'tcp' | 'websocket'` et une variable `activeTransport: TransportMode`.
-- [ ] Exposer une méthode `setTransport(mode: TransportMode, relayUrl?: string)` appelée depuis le lobby avant connexion.
-- [ ] **Section WebSocket — Hôte :**
+- [x] Ajouter un type `TransportMode = 'tcp' | 'websocket'` et une variable `activeTransport: TransportMode`.
+- [x] Exposer une méthode `setTransport(mode: TransportMode, relayUrl?: string)` appelée depuis le lobby avant connexion.
+- [x] **Section WebSocket — Hôte :**
   - Connexion au relay : `ws://relay.madapoly.com`
   - Envoyer `CREATE_ROOM` → recevoir et stocker le `roomCode`.
   - Tous les `broadcast()` deviennent des envois au relay qui les redistribue.
-  - `sendTo(clientId, packet)` → le relay utilise un `socketId` interne pour cibler un client.
-- [ ] **Section WebSocket — Client :**
+  - `sendTo(clientId, packet)` → ciblage via `__to` socketId embarqué dans le paquet.
+- [x] **Section WebSocket — Client :**
   - Connexion au relay avec le `roomCode`.
   - Envoyer `JOIN_ROOM` → le relay notifie l'hôte.
   - `sendMessage()` → envoi au relay → relay forward à l'hôte.
-- [ ] **Heartbeat WebSocket :** adapter `_startClientHeartbeat()` et `_startHostHeartbeat()` pour utiliser les ping/pong WebSocket natifs au lieu des paquets `__PING__`/`__PONG__` TCP.
-- [ ] `cleanup()` ferme la WebSocket proprement (`ws.close(1000)`) en plus du TCP.
-- [ ] Les deux transports coexistent dans le même fichier — aucune régression sur le mode TCP.
+- [x] **Heartbeat WebSocket :** `_startClientHeartbeat()` et `_startHostHeartbeat()` adaptés pour WS (`__PING__`/`__PONG__` via broadcast relay).
+- [x] `cleanup()` ferme la WebSocket proprement (`ws.close(1000)`) en plus du TCP.
+- [x] Les deux transports coexistent dans le même fichier — aucune régression sur le mode TCP.
 
 ---
 
 ### 11.4 Refactorisation du `LobbyScreen.tsx` 🎨
 
-- [ ] Ajouter un troisième mode : `type LobbyMode = 'select' | 'host' | 'client' | 'online_host' | 'online_client'`.
-- [ ] **Écran de sélection principal :**
+- [x] Ajouter un troisième mode : `type LobbyMode = 'select' | 'host' | 'client' | 'online_host' | 'online_client'`.
+- [x] **Écran de sélection principal :**
   ```
   ┌──────────────────────────────┐
   │  🏠  Solo (vs Bots)          │
@@ -398,18 +398,18 @@ relay-server/  (Node.js, déployé sur Railway/Render)
   │  🌐  Jouer en Ligne          │
   └──────────────────────────────┘
   ```
-- [ ] **Vue "Jouer en Ligne" → Hôte :**
+- [x] **Vue "Jouer en Ligne" → Hôte :**
   - Bouton "Créer une partie en ligne".
   - Appelle `NetworkManager.setTransport('websocket', RELAY_URL)` puis `createRoom()`.
   - Afficher le code de room en grand et lisible (ex: **TANA-4892**) avec un bouton "Copier".
   - Liste des joueurs connectés (même logique que le mode LAN).
   - Bouton "Lancer la partie".
-- [ ] **Vue "Jouer en Ligne" → Client :**
+- [x] **Vue "Jouer en Ligne" → Client :**
   - Champ de saisie du code de room (majuscules, format `XXXX-XXXX`).
   - Bouton "Rejoindre".
   - État d'attente identique au mode LAN.
-- [ ] Extraire la constante `RELAY_URL` dans `src/constants/config.ts` pour faciliter le changement entre dev/prod.
-- [ ] En mode en ligne, l'`ASSIGN_PLAYER_ID` reste géré par l'hôte (inchangé) — le relay le transmet simplement.
+- [x] Extraire la constante `RELAY_URL` dans `src/constants/config.ts` pour faciliter le changement entre dev/prod.
+- [x] En mode en ligne, l'`ASSIGN_PLAYER_ID` reste géré par l'hôte (inchangé) — le relay le transmet simplement.
 
 ---
 
@@ -417,10 +417,10 @@ relay-server/  (Node.js, déployé sur Railway/Render)
 
 > Le heartbeat et la `DisconnectModal` existent déjà (Phase 6). En mode WebSocket, les comportements sont légèrement différents.
 
-- [ ] Si un client perd la connexion → le relay ferme son socket → notifie l'hôte avec `PLAYER_LEFT` → l'hôte déclenche `onDisconnectCallback` → `DisconnectModal` ou gestion bot.
-- [ ] Si l'hôte perd la connexion → le relay ferme son socket → notifie tous les clients avec `HOST_LEFT` → `DisconnectModal` sur tous les clients.
+- [x] Si un client perd la connexion → le relay ferme son socket → notifie l'hôte avec `PLAYER_LEFT` → l'hôte déclenche `onDisconnectCallback` → `handleBankruptcy` (remplacement bot).
+- [x] Si l'hôte perd la connexion → le relay envoie `HOST_LEFT` → `_wsClientMessageHandler` déclenche `onDisconnectCallback('host')` → `DisconnectModal` sur tous les clients.
 - [ ] **Reconnexion en ligne (évolution) :** si un joueur se reconnecte avec le même `roomCode` + `localPlayerId` dans les 60s, le relay le réintègre dans la room et l'hôte lui re-sync le `STATE_UPDATE` complet.
-- [ ] Timeout room : si l'hôte ne revient pas en 60s, le relay dissout la room et notifie les clients restants.
+- [x] Timeout room : si l'hôte ne revient pas en 60s, le relay dissout la room avec `ROOM_DISSOLVED` et notifie les clients restants.
 
 ---
 
@@ -428,24 +428,24 @@ relay-server/  (Node.js, déployé sur Railway/Render)
 
 > Le relay est un prototype, pas une infrastructure de production. Ces points sont à connaître mais pas bloquants pour un lancement entre amis.
 
-- [ ] **Pas d'authentification :** n'importe qui connaissant le code de room peut rejoindre. Acceptable pour jouer entre amis, insuffisant pour un service public.
-- [ ] **Validation côté relay :** vérifier que les paquets sont du JSON valide avant de les forward (évite les crashes sur erreurs réseau).
-- [ ] **Rate limiting basique :** ignorer les clients qui envoient plus de 20 paquets/seconde (anti-spam).
-- [ ] **HTTPS/WSS :** en production, utiliser `wss://` (WebSocket sécurisé) via le certificat TLS de Railway/Render (automatique sur ces plateformes).
-- [ ] **Taille des paquets :** les `STATE_UPDATE` Monopoly sont typiquement < 5 Ko — pas de problème de taille.
+- [x] **Pas d'authentification :** n'importe qui connaissant le code de room peut rejoindre. Acceptable pour jouer entre amis (code room = accès implicite).
+- [x] **Validation côté relay :** JSON invalide → ignoré silencieusement (try/catch). Message > 64 KB → dropé. Max 100 connexions simultanées.
+- [x] **Rate limiting basique :** ignorés au-delà de 20 paquets/seconde par socket.
+- [x] **HTTPS/WSS :** automatique sur Railway/Render via leur certificat TLS — rien à coder.
+- [x] **Taille des paquets :** limite 64 KB appliquée côté relay. `STATE_UPDATE` typiquement < 5 KB.
 
 ---
 
 ### 11.7 Configuration & Déploiement 🚀
 
-- [ ] Créer `src/constants/config.ts` :
+- [x] Créer `src/constants/config.ts` :
   ```typescript
   export const RELAY_URL = __DEV__
     ? 'ws://localhost:8080'          // serveur local pour dev
     : 'wss://relay.madapoly.com';   // production
   ```
-- [ ] Créer `relay-server/package.json` avec script `start` et dépendance `ws`.
-- [ ] Créer `relay-server/server.js` (logique relay ~80 lignes).
+- [x] Créer `relay-server/package.json` avec script `start` et dépendance `ws`.
+- [x] Créer `relay-server/server.js` (logique relay ~200 lignes).
 - [ ] Tester en local : lancer le relay sur le Mac, deux téléphones sur le même Wi-Fi mais en mode "En ligne" → valider que le jeu fonctionne via le relay local avant de déployer.
 - [ ] Déployer sur Railway :
   - `railway init` dans `relay-server/`

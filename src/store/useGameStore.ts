@@ -211,8 +211,15 @@ export const useGameStore = create<GameStoreState & GameActions>((setOriginal, g
   },
 
   resetToLobby: () => {
-    // Full cleanup: network + game state
-    NetworkManager.cleanup();
+    const { networkRole, localPlayerId, appScreen } = get();
+    // If we are a client quitting mid-game, notify the host before closing the socket
+    if (networkRole === 'client' && appScreen === 'game' && localPlayerId) {
+      NetworkManager.sendMessage({ type: 'REQUEST_FORFEIT', payload: { playerId: localPlayerId } });
+      // Small delay to let the message flush before the socket is torn down
+      setTimeout(() => NetworkManager.cleanup(), 120);
+    } else {
+      NetworkManager.cleanup();
+    }
     set({
       // Reset game state
       players: [],

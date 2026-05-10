@@ -81,6 +81,12 @@ export const calculateRent = (
   board: BoardDynamicState,
   lastDiceRoll: [number, number] | null
 ): number => {
+  // ── HYPOTHÈQUE ──
+  // Si la propriété est hypothéquée, le loyer est toujours de 0.
+  if (board[space.id]?.isMortgaged) {
+    return 0;
+  }
+
   switch (space.type) {
     // ── PROPRIÉTÉS (Villes) ──
     // Loyer de base (index 0 du tableau rent) ou selon le nombre de maisons.

@@ -1,23 +1,30 @@
 import { create } from 'zustand';
-import { GameState, Player, TurnPhase } from '../types';
-import { STATIC_BOARD } from '../constants';
-import { calculateRent } from '../utils/rentCalculator';
+import { GameState, Player, TurnPhase, TradeOffer } from '../types';
+import { STATIC_BOARD, COLOR_GROUPS } from '../constants';
+import { calculateRent, hasMonopoly } from '../utils/rentCalculator';
+import { shuffleArray } from '../utils/mathHelpers';
+import { CHANCE_CARDS, COMMUNITY_CHEST_CARDS, GameCard } from '../constants/cards';
 import { NetworkManager } from '../network/NetworkManager';
 
 // ─── Event types for UI notifications ───
 export interface GameEvent {
-  type: 'info' | 'purchase' | 'tax' | 'jail' | 'go-bonus' | 'rent' | 'bankruptcy' | 'victory';
+  type: 'info' | 'purchase' | 'tax' | 'jail' | 'go-bonus' | 'rent' | 'bankruptcy' | 'victory' | 'build' | 'sell' | 'error' | 'card';
   message: string;
   emoji: string;
+  card?: GameCard;
 }
 
 interface GameActions {
-  initGame: (playersSetup: Pick<Player, 'id' | 'name' | 'isBot'>[]) => void;
+  initGame: (playersSetup: Pick<Player, 'id' | 'name' | 'isBot' | 'avatar'>[]) => void;
   rollDice: () => void;
   endAnimation: () => void;
   resolveSpace: () => void;
   buyProperty: () => void;
   skipPurchase: () => void;
+  buildHouse: (propertyId: string) => void;
+  sellHouse: (propertyId: string) => void;
+  mortgageProperty: (propertyId: string) => void;
+  unmortgageProperty: (propertyId: string) => void;
   endTurn: () => void;
   handleTimeout: () => void;
   clearEvent: () => void;
@@ -28,13 +35,27 @@ interface GameActions {
   useJailCard: () => void;
   rollForJailBreak: () => void;
   
+  // ── Gameplay ──
+  forfeit: () => void;
+  
+  // ── Trade Actions ──
+  proposeTrade: (offer: Omit<TradeOffer, 'id'>) => void;
+  respondToTrade: (accept: boolean) => void;
+  cancelTrade: () => void;
+  
   // ── Network Integration ──
   setNetworkRole: (role: 'local' | 'host' | 'client', clientId?: string | null) => void;
   setLocalPlayerId: (id: string) => void;
+  setLocalPlayerInfo: (name: string, avatar: string) => void;
   setNetworkStatus: (status: 'connected' | 'disconnected') => void;
   syncState: (newState: Partial<GameStoreState>) => void;
   setAppScreen: (screen: 'lobby' | 'game') => void;
   resetToLobby: () => void;
+  
+  // ── UI Modal States ──
+  setSelectedPlayerIdForProps: (id: string | null) => void;
+  setSelectedSpaceIdForDetail: (id: string | null) => void;
+  setIsGameLogOpen: (isOpen: boolean) => void;
 }
 
 export type NetworkRole = 'local' | 'host' | 'client';
@@ -47,7 +68,14 @@ interface GameStoreState extends GameState {
   networkStatus: NetworkStatus;
   clientId: string | null;
   localPlayerId: string | null;
+  localPlayerName: string;
+  localPlayerAvatar: string;
   appScreen: 'lobby' | 'game';
+  
+  // UI Modal states (local only, not broadcasted)
+  selectedPlayerIdForProps: string | null;
+  selectedSpaceIdForDetail: string | null;
+  isGameLogOpen: boolean;
 }
 
 // Helper to broadcast state if host
@@ -55,21 +83,35 @@ const broadcastIfHost = (getState: () => GameStoreState) => {
   const state = getState();
   if (state.networkRole === 'host') {
     // Broadcast the essential game state (omit functions)
-    const { players, board, currentPlayerIndex, turnPhase, consecutiveDoubles, lastDiceRoll, actionDeadline, lastEvent } = state;
+    const { players, board, currentPlayerIndex, turnPhase, consecutiveDoubles, lastDiceRoll, actionDeadline, lastEvent, gameLog, turnCount, chanceDeck, communityChestDeck, activeTradeOffer } = state;
     NetworkManager.broadcast({
       type: 'STATE_UPDATE',
-      payload: { players, board, currentPlayerIndex, turnPhase, consecutiveDoubles, lastDiceRoll, actionDeadline, lastEvent }
+      payload: { players, board, currentPlayerIndex, turnPhase, consecutiveDoubles, lastDiceRoll, actionDeadline, lastEvent, gameLog, turnCount, chanceDeck, communityChestDeck, activeTradeOffer }
     });
   }
 };
 
-export const useGameStore = create<GameStoreState & GameActions>((set, get) => ({
-  // --- ÉTAT INITIAL ---
-  players: [], 
-  board: {}, 
-  currentPlayerIndex: 0, 
-  turnPhase: 'WAITING_FOR_DICE',
-  consecutiveDoubles: 0, 
+export const useGameStore = create<GameStoreState & GameActions>((setOriginal, get) => {
+  // Wrap `set` to automatically append new events to the gameLog
+  const set = (partial: any, replace?: boolean | undefined) => {
+    if (typeof partial === 'object' && partial !== null && 'lastEvent' in partial) {
+      const event = partial.lastEvent;
+      // If an event is provided and is different from the last one
+      if (event && event !== get().lastEvent) {
+        const logMsg = `[Tour ${get().turnCount}] ${event.emoji} ${event.message}`;
+        partial.gameLog = [logMsg, ...get().gameLog].slice(0, 50); // Keep last 50 logs
+      }
+    }
+    setOriginal(partial, replace);
+  };
+
+  return {
+    // --- ÉTAT INITIAL ---
+    players: [], 
+    board: {}, 
+    currentPlayerIndex: 0, 
+    turnPhase: 'WAITING_FOR_DICE',
+    consecutiveDoubles: 0, 
   lastDiceRoll: null, 
   actionDeadline: null,
   lastEvent: null,
@@ -78,9 +120,17 @@ export const useGameStore = create<GameStoreState & GameActions>((set, get) => (
   clientId: null,
   localPlayerId: null,
   appScreen: 'lobby',
+  
+  // Initial UI states
+  selectedPlayerIdForProps: null,
+  selectedSpaceIdForDetail: null,
+  isGameLogOpen: false,
 
   // --- ACTIONS ---
   setAppScreen: (screen) => set({ appScreen: screen }),
+  setSelectedPlayerIdForProps: (id) => set({ selectedPlayerIdForProps: id }),
+  setSelectedSpaceIdForDetail: (id) => set({ selectedSpaceIdForDetail: id }),
+  setIsGameLogOpen: (isOpen) => set({ isGameLogOpen: isOpen }),
 
   setNetworkRole: (role, clientId = null) => {
     set({ networkRole: role, clientId });
@@ -88,6 +138,10 @@ export const useGameStore = create<GameStoreState & GameActions>((set, get) => (
 
   setLocalPlayerId: (id) => {
     set({ localPlayerId: id });
+  },
+
+  setLocalPlayerInfo: (name, avatar) => {
+    set({ localPlayerName: name, localPlayerAvatar: avatar });
   },
 
   setNetworkStatus: (status) => {
@@ -113,11 +167,22 @@ export const useGameStore = create<GameStoreState & GameActions>((set, get) => (
       lastDiceRoll: null,
       actionDeadline: null,
       lastEvent: null,
+      gameLog: [],
+      turnCount: 1,
+      chanceDeck: [],
+      communityChestDeck: [],
+      activeTradeOffer: null,
+      // Reset UI state
+      selectedPlayerIdForProps: null,
+      selectedSpaceIdForDetail: null,
+      isGameLogOpen: false,
       // Reset network state
       networkRole: 'local',
       networkStatus: 'connected',
       clientId: null,
       localPlayerId: null,
+      localPlayerName: 'Joueur',
+      localPlayerAvatar: '🎩',
       appScreen: 'lobby',
     });
   },
@@ -135,7 +200,23 @@ export const useGameStore = create<GameStoreState & GameActions>((set, get) => (
       hasGetOutOfJailCard: false,
       isBankrupt: false,
     }));
-    set({ players, turnPhase: 'WAITING_FOR_DICE', currentPlayerIndex: 0, lastEvent: null, board: {} });
+    const initialChance = shuffleArray(Array.from({ length: 16 }, (_, i) => i));
+    const initialCommunity = shuffleArray(Array.from({ length: 16 }, (_, i) => i));
+
+    set({ 
+      players, 
+      turnPhase: 'WAITING_FOR_DICE', 
+      currentPlayerIndex: 0, 
+      lastEvent: null, 
+      board: {},
+      gameLog: ['La partie commence !'],
+      turnCount: 1,
+      chanceDeck: initialChance,
+      communityChestDeck: initialCommunity,
+      selectedPlayerIdForProps: null,
+      selectedSpaceIdForDetail: null,
+      isGameLogOpen: false
+    });
     broadcastIfHost(get);
   },
 
@@ -328,19 +409,117 @@ export const useGameStore = create<GameStoreState & GameActions>((set, get) => (
         break;
       }
       case 'community-chest':
-        set({ 
+      case 'chance': {
+        const isChance = space.type === 'chance';
+        let deck = isChance ? [...get().chanceDeck] : [...get().communityChestDeck];
+        
+        // Reshuffle if empty
+        if (deck.length === 0) {
+          deck = shuffleArray(Array.from({ length: 16 }, (_, i) => i));
+        }
+
+        const cardIndex = deck.shift()!;
+        deck.push(cardIndex); // Put at bottom of deck
+
+        const card = isChance ? CHANCE_CARDS[cardIndex] : COMMUNITY_CHEST_CARDS[cardIndex];
+        
+        const newPlayers = [...players];
+        const newBoard = { ...board };
+        const p = newPlayers[currentPlayerIndex];
+
+        // Apply card effect
+        let newPos = p.position;
+        switch (card.action.type) {
+          case 'RECEIVE':
+            p.balance += card.action.amount || 0;
+            break;
+          case 'PAY':
+            p.balance -= card.action.amount || 0;
+            break;
+          case 'PAY_ALL':
+            newPlayers.forEach(other => {
+              if (other.id !== p.id && !other.isBankrupt) {
+                other.balance += card.action.amount || 0;
+                p.balance -= card.action.amount || 0;
+              }
+            });
+            break;
+          case 'RECEIVE_ALL':
+            newPlayers.forEach(other => {
+              if (other.id !== p.id && !other.isBankrupt) {
+                other.balance -= card.action.amount || 0;
+                p.balance += card.action.amount || 0;
+                // Note: simplified bankruptcy check for others
+              }
+            });
+            break;
+          case 'GO_TO_JAIL':
+            p.position = 10;
+            p.inJail = true;
+            break;
+          case 'GET_OUT_OF_JAIL':
+            p.hasGetOutOfJailCard = true;
+            break;
+          case 'MOVE_RELATIVE':
+            newPos = (p.position + (card.action.steps || 0) + 40) % 40;
+            p.position = newPos;
+            break;
+          case 'MOVE_TO': {
+            const targetPos = parseInt(card.action.targetId || '0', 10);
+            if (card.action.passGoBonus && targetPos < p.position) {
+              p.balance += 200;
+            }
+            p.position = targetPos;
+            newPos = targetPos;
+            break;
+          }
+          case 'STREET_REPAIRS': {
+            let houses = 0, hotels = 0;
+            Object.values(board).forEach(s => {
+              if (s.ownerId === p.id) {
+                if (s.houseCount === 5) hotels++;
+                else houses += s.houseCount;
+              }
+            });
+            const cost = houses * (card.action.houseAmount || 0) + hotels * (card.action.hotelAmount || 0);
+            p.balance -= cost;
+            break;
+          }
+        }
+
+        const stateUpdates: any = {
+          players: newPlayers,
+          board: newBoard,
           turnPhase: 'END_OF_TURN',
-          lastEvent: { type: 'info', message: `${player.name} tire une carte Magie-Magie`, emoji: '🃏' },
-        });
+          lastEvent: { 
+            type: 'card', 
+            message: `${player.name} a tiré : "${card.text}"`, 
+            emoji: isChance ? '🃏' : '📦',
+            card
+          },
+        };
+
+        if (isChance) stateUpdates.chanceDeck = deck;
+        else stateUpdates.communityChestDeck = deck;
+
+        set(stateUpdates);
+
+        // Si faillite
+        if (p.balance < 0) {
+          get().handleBankruptcy(p.id, null);
+        } else if (newPos !== player.position && !p.inJail) {
+          // Si la carte l'a déplacé (et pas en prison), on résout la nouvelle case !
+          // On le fait dans une frame suivante pour laisser l'UI souffler ? Non, on peut appeler resolveSpace.
+          // Wait, if we just call get().resolveSpace(), the lastEvent will be overwritten.
+          // Let's rely on the player acknowledging the card first ? No, just resolve space.
+          // Wait, let's keep it simple: the card text explains it. The rent/purchase modal will pop up.
+          // We must set turnPhase to ANIMATING_MOVEMENT so it triggers resolveSpace again in the GameScreen hook.
+          set({ turnPhase: 'ANIMATING_MOVEMENT' });
+        }
+
         broadcastIfHost(get);
         break;
-      case 'chance':
-        set({ 
-          turnPhase: 'END_OF_TURN',
-          lastEvent: { type: 'info', message: `${player.name} tire une carte Ankamantatra`, emoji: '❓' },
-        });
-        broadcastIfHost(get);
-        break;
+      }
       default:
         set({ turnPhase: 'END_OF_TURN' });
         broadcastIfHost(get);
@@ -401,16 +580,216 @@ export const useGameStore = create<GameStoreState & GameActions>((set, get) => (
     broadcastIfHost(get);
   },
 
+  buildHouse: (propertyId: string) => {
+    const { players, board, currentPlayerIndex, networkRole, localPlayerId } = get();
+
+    if (networkRole === 'client') {
+      NetworkManager.sendMessage({ type: 'REQUEST_BUILD_HOUSE', payload: { propertyId } });
+      return;
+    }
+
+    const player = players[currentPlayerIndex];
+    const space = STATIC_BOARD.find(s => s.id === propertyId);
+    const record = board[propertyId];
+
+    if (!space || space.type !== 'property' || !space.color || !space.buildCost || !record || record.ownerId !== player.id) return;
+    
+    // Check Monopoly
+    if (!hasMonopoly(player.id, space.color, board)) return;
+
+    // Check Max limit
+    if (record.houseCount >= 5) return;
+
+    // Check Uniformity (cannot build if it would be > minHouseCount + 1)
+    const groupSpaces = STATIC_BOARD.filter(s => s.color === space.color);
+    const minHouseCount = Math.min(...groupSpaces.map(s => board[s.id]?.houseCount || 0));
+    if (record.houseCount + 1 > minHouseCount + 1) return;
+
+    // Check Bank supply
+    let housesInUse = 0;
+    let hotelsInUse = 0;
+    Object.values(board).forEach(s => {
+      if (s.houseCount === 5) hotelsInUse++;
+      else housesInUse += s.houseCount;
+    });
+
+    const isBuildingHotel = record.houseCount === 4;
+    if (isBuildingHotel && hotelsInUse >= 12) return; // No hotels left
+    if (!isBuildingHotel && housesInUse >= 32) return; // No houses left
+
+    // Check Funds
+    if (player.balance < space.buildCost) return;
+
+    // Execute build
+    const newPlayers = [...players];
+    newPlayers[currentPlayerIndex] = { ...player, balance: player.balance - space.buildCost };
+
+    const newBoard = { ...board };
+    newBoard[propertyId] = { ...record, houseCount: record.houseCount + 1 };
+
+    const buildingName = isBuildingHotel ? 'un hôtel' : 'une maison';
+    
+    set({
+      players: newPlayers,
+      board: newBoard,
+      lastEvent: { type: 'build', message: `${player.name} construit ${buildingName} sur ${space.name} !`, emoji: '🏗️' }
+    });
+    broadcastIfHost(get);
+  },
+
+  sellHouse: (propertyId: string) => {
+    const { players, board, currentPlayerIndex, networkRole, localPlayerId } = get();
+
+    if (networkRole === 'client') {
+      NetworkManager.sendMessage({ type: 'REQUEST_SELL_HOUSE', payload: { propertyId } });
+      return;
+    }
+
+    const player = players[currentPlayerIndex];
+    const space = STATIC_BOARD.find(s => s.id === propertyId);
+    const record = board[propertyId];
+
+    // Note: To sell, we just check owner, even if it's not their turn (for bankruptcy handling later, but here we'll assume current player)
+    // Wait, let's allow selling during own turn only for now.
+    if (!space || space.type !== 'property' || !space.color || !space.buildCost || !record || record.ownerId !== player.id) return;
+    
+    if (record.houseCount <= 0) return;
+
+    // Check Uniformity (cannot sell if it would be < maxHouseCount - 1)
+    const groupSpaces = STATIC_BOARD.filter(s => s.color === space.color);
+    const maxHouseCount = Math.max(...groupSpaces.map(s => board[s.id]?.houseCount || 0));
+    if (record.houseCount - 1 < maxHouseCount - 1) return;
+
+    // Check Bank supply if selling hotel (need 4 houses)
+    const isSellingHotel = record.houseCount === 5;
+    if (isSellingHotel) {
+      let housesInUse = 0;
+      Object.values(board).forEach(s => {
+        if (s.houseCount < 5) housesInUse += s.houseCount;
+      });
+      if (32 - housesInUse < 4) {
+        // Not enough houses to replace the hotel! In real life, you must sell down to 0 if not enough houses.
+        // For simplicity here, we just block it.
+        set({ lastEvent: { type: 'error', message: `Pas assez de maisons en banque pour démolir l'hôtel !`, emoji: '⚠️' } });
+        return;
+      }
+    }
+
+    // Execute sell (half price)
+    const sellPrice = Math.floor(space.buildCost / 2);
+    const newPlayers = [...players];
+    newPlayers[currentPlayerIndex] = { ...player, balance: player.balance + sellPrice };
+
+    const newBoard = { ...board };
+    newBoard[propertyId] = { ...record, houseCount: record.houseCount - 1 };
+
+    const buildingName = isSellingHotel ? 'un hôtel' : 'une maison';
+    
+    set({
+      players: newPlayers,
+      board: newBoard,
+      lastEvent: { type: 'sell', message: `${player.name} vend ${buildingName} sur ${space.name} (+${sellPrice} AR)`, emoji: '🔨' }
+    });
+    broadcastIfHost(get);
+  },
+
+  mortgageProperty: (propertyId: string) => {
+    const { players, board, currentPlayerIndex, networkRole } = get();
+
+    if (networkRole === 'client') {
+      NetworkManager.sendMessage({ type: 'REQUEST_MORTGAGE', payload: { propertyId } });
+      return;
+    }
+
+    const player = players[currentPlayerIndex];
+    const space = STATIC_BOARD.find(s => s.id === propertyId);
+    const record = board[propertyId];
+
+    if (!space || !space.price || !record || record.ownerId !== player.id || record.isMortgaged) return;
+
+    // Check if any property in the color group has houses (must sell houses first)
+    if (space.type === 'property' && space.color) {
+      const groupSpaces = STATIC_BOARD.filter(s => s.color === space.color);
+      const hasHouses = groupSpaces.some(s => (board[s.id]?.houseCount || 0) > 0);
+      if (hasHouses) {
+        set({ lastEvent: { type: 'error', message: `Vendez d'abord les maisons du groupe de couleur !`, emoji: '⚠️' } });
+        return;
+      }
+    }
+
+    const mortgageValue = Math.floor(space.price / 2);
+    const newPlayers = [...players];
+    newPlayers[currentPlayerIndex] = { ...player, balance: player.balance + mortgageValue };
+
+    const newBoard = { ...board };
+    newBoard[propertyId] = { ...record, isMortgaged: true };
+
+    set({
+      players: newPlayers,
+      board: newBoard,
+      lastEvent: { type: 'info', message: `${player.name} hypothèque ${space.name} (+${mortgageValue} AR)`, emoji: '🏦' }
+    });
+    broadcastIfHost(get);
+  },
+
+  unmortgageProperty: (propertyId: string) => {
+    const { players, board, currentPlayerIndex, networkRole } = get();
+
+    if (networkRole === 'client') {
+      NetworkManager.sendMessage({ type: 'REQUEST_UNMORTGAGE', payload: { propertyId } });
+      return;
+    }
+
+    const player = players[currentPlayerIndex];
+    const space = STATIC_BOARD.find(s => s.id === propertyId);
+    const record = board[propertyId];
+
+    if (!space || !space.price || !record || record.ownerId !== player.id || !record.isMortgaged) return;
+
+    const unmortgageCost = Math.ceil((space.price / 2) * 1.1); // 10% interest
+
+    if (player.balance < unmortgageCost) {
+      set({ lastEvent: { type: 'error', message: `Fonds insuffisants pour lever l'hypothèque !`, emoji: '💸' } });
+      return;
+    }
+
+    const newPlayers = [...players];
+    newPlayers[currentPlayerIndex] = { ...player, balance: player.balance - unmortgageCost };
+
+    const newBoard = { ...board };
+    newBoard[propertyId] = { ...record, isMortgaged: false };
+
+    set({
+      players: newPlayers,
+      board: newBoard,
+      lastEvent: { type: 'info', message: `${player.name} lève l'hypothèque de ${space.name} (-${unmortgageCost} AR)`, emoji: '🏡' }
+    });
+    broadcastIfHost(get);
+  },
+
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // endTurn — Saute les joueurs en faillite, détecte la prison
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   endTurn: () => {
-    const { players, currentPlayerIndex, turnPhase, networkRole } = get();
+    const { players, currentPlayerIndex, turnPhase, networkRole, consecutiveDoubles } = get();
     if (players.length === 0) return;
     if (turnPhase === 'GAME_OVER') return;
 
     if (networkRole === 'client') {
       NetworkManager.sendMessage({ type: 'REQUEST_END_TURN' });
+      return;
+    }
+
+    const currentPlayer = players[currentPlayerIndex];
+
+    // Rejouer si double (et si le joueur n'est pas en prison suite à 3 doubles ou case "Allez en prison")
+    if (consecutiveDoubles > 0 && !currentPlayer.inJail && !currentPlayer.isBankrupt) {
+      set({ 
+        turnPhase: 'WAITING_FOR_DICE', 
+        actionDeadline: null,
+        lastEvent: { type: 'info', message: `${currentPlayer.name} a fait un double et rejoue !`, emoji: '🎲' },
+      });
+      broadcastIfHost(get);
       return;
     }
 
@@ -610,6 +989,105 @@ export const useGameStore = create<GameStoreState & GameActions>((set, get) => (
   },
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // TRADE ACTIONS
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  proposeTrade: (offer) => {
+    const { networkRole } = get();
+    if (networkRole === 'client') {
+      NetworkManager.sendMessage({ type: 'REQUEST_TRADE', payload: offer });
+      return;
+    }
+
+    const tradeId = 'trade-' + Date.now();
+    const fullOffer: TradeOffer = { ...offer, id: tradeId };
+    
+    set({ activeTradeOffer: fullOffer });
+    broadcastIfHost(get);
+  },
+
+  respondToTrade: (accept) => {
+    const { networkRole, activeTradeOffer, players, board } = get();
+
+    if (networkRole === 'client') {
+      NetworkManager.sendMessage({ type: 'RESPOND_TRADE', payload: { accept } });
+      return;
+    }
+
+    if (!activeTradeOffer) return;
+
+    if (!accept) {
+      set({ 
+        activeTradeOffer: null,
+        lastEvent: { type: 'info', message: `L'échange a été refusé.`, emoji: '❌' }
+      });
+      broadcastIfHost(get);
+      return;
+    }
+
+    // Process the trade!
+    const { fromPlayerId, toPlayerId, offerMoney, offerProperties, requestMoney, requestProperties } = activeTradeOffer;
+    
+    const newPlayers = [...players];
+    const fromIdx = newPlayers.findIndex(p => p.id === fromPlayerId);
+    const toIdx = newPlayers.findIndex(p => p.id === toPlayerId);
+
+    if (fromIdx === -1 || toIdx === -1) {
+      set({ activeTradeOffer: null });
+      return;
+    }
+
+    // Money transfer
+    newPlayers[fromIdx] = { ...newPlayers[fromIdx], balance: newPlayers[fromIdx].balance - offerMoney + requestMoney };
+    newPlayers[toIdx] = { ...newPlayers[toIdx], balance: newPlayers[toIdx].balance + offerMoney - requestMoney };
+
+    // Properties transfer
+    const newBoard = { ...board };
+    
+    offerProperties.forEach(pid => {
+      if (newBoard[pid]) newBoard[pid] = { ...newBoard[pid], ownerId: toPlayerId };
+    });
+    
+    requestProperties.forEach(pid => {
+      if (newBoard[pid]) newBoard[pid] = { ...newBoard[pid], ownerId: fromPlayerId };
+    });
+
+    set({
+      players: newPlayers,
+      board: newBoard,
+      activeTradeOffer: null,
+      lastEvent: { type: 'info', message: `${newPlayers[fromIdx].name} et ${newPlayers[toIdx].name} ont conclu un échange !`, emoji: '🤝' }
+    });
+    broadcastIfHost(get);
+  },
+
+  cancelTrade: () => {
+    const { networkRole } = get();
+    if (networkRole === 'client') {
+      NetworkManager.sendMessage({ type: 'CANCEL_TRADE' });
+      return;
+    }
+    set({ activeTradeOffer: null });
+    broadcastIfHost(get);
+  },
+
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // forfeit — Abandon volontaire (forfait)
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  forfeit: () => {
+    const { networkRole, localPlayerId } = get();
+
+    if (networkRole === 'client') {
+      NetworkManager.sendMessage({ type: 'REQUEST_FORFEIT', payload: { playerId: localPlayerId } });
+      return;
+    }
+
+    // Host or local: bankrupt the local player
+    if (localPlayerId) {
+      get().handleBankruptcy(localPlayerId, null);
+    }
+  },
+
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // handleBankruptcy — Gestion complète de la faillite
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   handleBankruptcy: (bankruptPlayerId: string, creditorId: string | null) => {
@@ -641,10 +1119,12 @@ export const useGameStore = create<GameStoreState & GameActions>((set, get) => (
 
     // 3. Compter les joueurs encore actifs
     const activePlayers = newPlayers.filter(p => !p.isBankrupt);
+    const activeHumans = activePlayers.filter(p => !p.isBot);
     
-    if (activePlayers.length <= 1) {
-      // ── VICTOIRE : Un seul joueur reste ──
-      const winner = activePlayers[0];
+    if (activePlayers.length <= 1 || activeHumans.length === 0) {
+      // ── VICTOIRE OU FIN DE PARTIE ──
+      // Un seul joueur reste, ou plus aucun joueur humain
+      const winner = activePlayers.length === 1 ? activePlayers[0] : null;
       set({
         players: newPlayers,
         board: newBoard,
@@ -653,10 +1133,11 @@ export const useGameStore = create<GameStoreState & GameActions>((set, get) => (
           type: 'victory', 
           message: winner 
             ? `🏆 ${winner.name} remporte la partie !`
-            : 'La partie est terminée !', 
+            : 'La partie est terminée (plus aucun humain) !', 
           emoji: '👑' 
         },
       });
+      broadcastIfHost(get);
     } else {
       // Le jeu continue — afficher la notification de faillite
       const creditorName = creditorId 
@@ -672,8 +1153,15 @@ export const useGameStore = create<GameStoreState & GameActions>((set, get) => (
           emoji: '💀'
         },
       });
+      
+      // Si c'est le tour du joueur qui vient de faire faillite/d'abandonner, on passe le tour
+      const { currentPlayerIndex } = get();
+      if (players[currentPlayerIndex].id === bankruptPlayerId) {
+        get().endTurn();
+      } else {
+        broadcastIfHost(get);
+      }
     }
-    broadcastIfHost(get);
   },
 
   clearEvent: () => {
@@ -690,4 +1178,4 @@ export const useGameStore = create<GameStoreState & GameActions>((set, get) => (
     else if (turnPhase === 'WAITING_FOR_DECISION') get().skipPurchase();
     else if (turnPhase === 'IN_JAIL_DECISION') get().rollForJailBreak();
   },
-}));
+};});

@@ -1,5 +1,6 @@
 import React from 'react';
-import { StyleSheet, View, Text } from 'react-native';
+import { StyleSheet, View, Text, TouchableOpacity } from 'react-native';
+import { useGameStore } from '../../store/useGameStore';
 import { BoardSpace } from '../../constants';
 import { TileLayout } from '../../utils/mathHelpers';
 
@@ -38,6 +39,9 @@ const BG_COLORS: Record<string, string> = {
  */
 export const SpaceTile = React.memo(({ space, layout }: SpaceTileProps) => {
   const { x, y, width, height, isCorner, side } = layout;
+  const setSelectedSpaceIdForDetail = useGameStore(s => s.setSelectedSpaceIdForDetail);
+  const houseCount = useGameStore(s => s.board[space.id]?.houseCount || 0);
+  const isMortgaged = useGameStore(s => s.board[space.id]?.isMortgaged || false);
 
   const isProperty = space.type === 'property';
   const hasColor = isProperty && !!space.color;
@@ -54,16 +58,28 @@ export const SpaceTile = React.memo(({ space, layout }: SpaceTileProps) => {
       position: 'absolute' as const,
     };
 
-    switch (side) {
-      case 'bottom':
-        return <View style={[stripStyle, { top: 0, left: 0, right: 0, height: height * STRIP_RATIO }]} />;
-      case 'left':
-        return <View style={[stripStyle, { top: 0, right: 0, bottom: 0, width: width * STRIP_RATIO }]} />;
-      case 'top':
-        return <View style={[stripStyle, { bottom: 0, left: 0, right: 0, height: height * STRIP_RATIO }]} />;
-      case 'right':
-        return <View style={[stripStyle, { top: 0, left: 0, bottom: 0, width: width * STRIP_RATIO }]} />;
+    const isHorizontal = side === 'bottom' || side === 'top';
+    const isVertical = side === 'left' || side === 'right';
+    
+    let content = null;
+    if (houseCount === 5) {
+      content = <View style={[styles.building, styles.hotel, isVertical && styles.buildingVertical]} />;
+    } else if (houseCount > 0) {
+      content = Array.from({ length: houseCount }).map((_, i) => (
+        <View key={i} style={[styles.building, styles.house, isVertical && styles.buildingVertical]} />
+      ));
     }
+
+    const containerStyle = [
+      stripStyle,
+      side === 'bottom' && { top: 0, left: 0, right: 0, height: height * STRIP_RATIO },
+      side === 'left' && { top: 0, right: 0, bottom: 0, width: width * STRIP_RATIO },
+      side === 'top' && { bottom: 0, left: 0, right: 0, height: height * STRIP_RATIO },
+      side === 'right' && { top: 0, left: 0, bottom: 0, width: width * STRIP_RATIO },
+      { flexDirection: isHorizontal ? 'row' : 'column', justifyContent: 'center', alignItems: 'center', gap: 2 }
+    ];
+
+    return <View style={containerStyle as any}>{content}</View>;
   };
 
   // Calculate content padding to avoid overlapping the color strip
@@ -87,7 +103,9 @@ export const SpaceTile = React.memo(({ space, layout }: SpaceTileProps) => {
   const iconSize = isCorner ? 22 : 14;
 
   return (
-    <View
+    <TouchableOpacity
+      activeOpacity={0.8}
+      onPress={() => setSelectedSpaceIdForDetail(space.id)}
       style={[
         styles.tile,
         {
@@ -96,6 +114,7 @@ export const SpaceTile = React.memo(({ space, layout }: SpaceTileProps) => {
           width,
           height,
           backgroundColor: bgColor,
+          opacity: isMortgaged ? 0.5 : 1,
         },
       ]}
     >
@@ -108,7 +127,11 @@ export const SpaceTile = React.memo(({ space, layout }: SpaceTileProps) => {
           </View>
         )}
         <Text
-          style={[styles.tileName, { fontSize: nameFontSize }]}
+          style={[
+            styles.tileName, 
+            { fontSize: nameFontSize },
+            isMortgaged && { textDecorationLine: 'line-through' }
+          ]}
           numberOfLines={2}
           adjustsFontSizeToFit
           minimumFontScale={0.5}
@@ -121,7 +144,7 @@ export const SpaceTile = React.memo(({ space, layout }: SpaceTileProps) => {
           </Text>
         )}
       </View>
-    </View>
+    </TouchableOpacity>
   );
 });
 
@@ -149,4 +172,23 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: 1,
   },
+  building: {
+    borderWidth: 0.5,
+    borderColor: 'rgba(0,0,0,0.5)',
+    borderRadius: 1,
+  },
+  house: {
+    backgroundColor: '#1FB25A', // Monopoly green
+    width: 6,
+    height: 6,
+  },
+  hotel: {
+    backgroundColor: '#E10214', // Monopoly red
+    width: 14,
+    height: 6,
+  },
+  buildingVertical: {
+    width: 6,
+    height: 6,
+  }
 });

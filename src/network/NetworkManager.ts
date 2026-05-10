@@ -13,6 +13,33 @@ const connectedClients: Map<string, TcpSocket.Socket> = new Map();
 
 let clientSocket: TcpSocket.Socket | null = null;
 
+// Helper to write large messages in chunks to prevent Android socket crashes
+const safeSocketWrite = (socket: TcpSocket.Socket, message: string) => {
+  const CHUNK_SIZE = 8192; // 8KB chunks
+  let offset = 0;
+
+  const writeChunk = () => {
+    if (offset >= message.length) return;
+    
+    const chunk = message.substring(offset, offset + CHUNK_SIZE);
+    offset += CHUNK_SIZE;
+    
+    try {
+      const flushed = socket.write(chunk);
+      if (!flushed) {
+        socket.once('drain', writeChunk);
+      } else {
+        // Use setImmediate if available to not block the event loop, or just write next
+        writeChunk();
+      }
+    } catch (e) {
+      console.error('[Network] Error writing chunk:', e);
+    }
+  };
+
+  writeChunk();
+};
+
 // ── TCP Message Buffers (handles packet fragmentation) ──
 let clientBuffer: string = '';                                    // Client-side buffer
 const hostBuffers: Map<string, string> = new Map();               // Host-side per-client buffers
@@ -64,6 +91,7 @@ export const NetworkManager = {
       }
 
       server = TcpSocket.createServer((socket) => {
+        socket.setEncoding('utf8');
         const clientId = `${socket.remoteAddress}:${socket.remotePort}`;
         console.log(`[Host] Client connected: ${clientId}`);
         
@@ -142,11 +170,7 @@ export const NetworkManager = {
     // Add newline as delimiter for the receiving end
     const message = JSON.stringify(packet) + '\n';
     connectedClients.forEach((socket, clientId) => {
-      try {
-        socket.write(message);
-      } catch (e) {
-        console.error(`[Host] Failed to send to ${clientId}:`, e);
-      }
+      safeSocketWrite(socket, message);
     });
   },
 
@@ -160,12 +184,8 @@ export const NetworkManager = {
       console.warn(`[Host] sendTo: client ${clientId} not found`);
       return;
     }
-    try {
-      const message = JSON.stringify(packet) + '\n';
-      socket.write(message);
-    } catch (e) {
-      console.error(`[Host] Failed to sendTo ${clientId}:`, e);
-    }
+    const message = JSON.stringify(packet) + '\n';
+    safeSocketWrite(socket, message);
   },
 
   closeServer() {
@@ -206,6 +226,7 @@ export const NetworkManager = {
         host: ip,
       }, () => {
         console.log(`[Client] Connected to ${ip}:${port}`);
+        if (clientSocket) clientSocket.setEncoding('utf8');
         // Start client-side heartbeat
         NetworkManager._startClientHeartbeat();
         resolve();
@@ -258,12 +279,8 @@ export const NetworkManager = {
       console.warn('[Client] Cannot send message, not connected');
       return;
     }
-    try {
-      const message = JSON.stringify(packet) + '\n';
-      clientSocket.write(message);
-    } catch (e) {
-      console.error('[Client] Failed to send message:', e);
-    }
+    const message = JSON.stringify(packet) + '\n';
+    safeSocketWrite(clientSocket, message);
   },
 
   disconnect() {
@@ -291,11 +308,7 @@ export const NetworkManager = {
       // Send PING to all clients
       const pingMessage = JSON.stringify({ type: '__PING__' }) + '\n';
       connectedClients.forEach((socket, clientId) => {
-        try {
-          socket.write(pingMessage);
-        } catch (e) {
-          console.error(`[Host/HB] Failed to ping ${clientId}:`, e);
-        }
+        safeSocketWrite(socket, pingMessage);
       });
 
       // Check for stale clients

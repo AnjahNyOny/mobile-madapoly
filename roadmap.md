@@ -68,6 +68,7 @@ Transformer le jeu local actuel géré par Zustand en une architecture Client-Se
 - [ ] **5.2 Tests Multi-Appareils**
   - Tester avec l'émulateur Mac et au moins un téléphone physique Android sur le même réseau Wi-Fi.
   - Valider les cas limites : latence, joueur qui quitte l'application brusquement (déconnexion de socket).
+  - [x] **Fix TCP fragmentation** : Ajout de buffers d'accumulation (`clientBuffer`, `hostBuffers`) pour gérer les paquets coupés sur les gros `STATE_UPDATE`.
 
 ---
 
@@ -132,28 +133,27 @@ Transformer le jeu local actuel géré par Zustand en une architecture Client-Se
 
 | Fonctionnalité | Priorité | Complexité |
 |---|---|---|
-| **Constructions** (maisons / hôtels) | 🔴 Haute | Moyenne |
-| **Loyers progressifs** (avec maisons) | 🔴 Haute | Faible (calculés, pas affichés) |
-| **Monopole de couleur** (bonus loyer ×2) | 🔴 Haute | Faible |
-| **Deck de cartes** Magie-Magie / Ankamantatra | 🟠 Moyenne | Moyenne |
-| **Mécanique de prison complète** | 🟠 Moyenne | Faible |
-| **Hypothèques** | 🟡 Basse | Moyenne |
-| **Échanges entre joueurs** | 🟡 Basse | Haute |
-| **Noms des joueurs** (lobby) | 🟠 Moyenne | Très faible |
+| ~~**Constructions** (maisons / hôtels)~~ | ~~🔴 Haute~~ | ~~Moyenne~~ | ✅ Fait |
+| ~~**Loyers progressifs** (avec maisons)~~ | ~~🔴 Haute~~ | ~~Faible~~ | ✅ Fait (`rentCalculator.ts` complet) |
+| ~~**Monopole de couleur** (bonus loyer ×2)~~ | ~~🔴 Haute~~ | ~~Faible~~ | ✅ Fait (`hasMonopoly()`) |
+| ~~**Deck de cartes** Magie-Magie / Ankamantatra~~ | ~~🟠 Moyenne~~ | ~~Moyenne~~ | ✅ Fait (`cards.ts`) |
+| ~~**Mécanique de prison complète**~~ | ~~🟠 Moyenne~~ | ~~Faible~~ | ✅ Fait |
+| ~~**Échanges entre joueurs**~~ | ~~🟡 Basse~~ | ~~Haute~~ | ✅ Fait |
+| ~~**Noms des joueurs** (lobby)~~ | ~~🟠 Moyenne~~ | ~~Très faible~~ | ✅ Fait |
 | **Assets visuels** (icônes propriétés réelles) | 🟠 Moyenne | Faible |
 | **Sons / musique** | 🟡 Basse | Faible |
 | **Reconnexion réseau** (rejoin après drop) | 🟡 Basse | Haute |
 | **Spectateurs** (mode client sans joueur assigné) | 🟡 Basse | Moyenne |
 | **Sauvegarde de partie** | 🟡 Basse | Haute |
-| **Historique de partie** (game log) | 🟠 Moyenne | Faible |
-| **Choix du nombre de bots** | 🟠 Moyenne | Très faible |
+| ~~**Historique de partie** (game log)~~ | ~~🟠 Moyenne~~ | ~~Faible~~ | ✅ Fait |
+| ~~**Choix du nombre de bots**~~ | ~~🟠 Moyenne~~ | ~~Très faible~~ | ✅ Fait |
 | **Condition de victoire : Fortune limite** | 🟠 Moyenne | Très faible |
 | **Mode Chrono** (gagnant = plus riche à la fin du temps) | 🟠 Moyenne | Faible |
-| **Panneau propriétés d'un joueur** (mes propriétés) | 🔴 Haute | Faible |
+| ~~**Panneau propriétés d'un joueur** (mes propriétés)~~ | ~~🔴 Haute~~ | ~~Faible~~ | ✅ Fait |
 | **Voir les propriétés d'un adversaire** | 🟠 Moyenne | Faible |
-| **Payer pour sortir de prison** (caution) | 🔴 Haute | Très faible |
-| **Fiche détaillée d'une propriété** (tap sur case) | 🟠 Moyenne | Faible |
-| **Option Abandonner** (forfait en cours de partie) | 🟠 Moyenne | Faible |
+| ~~**Payer pour sortir de prison**~~ (caution) | ~~🔴 Haute~~ | ~~Très faible~~ | ✅ Fait |
+| ~~**Fiche détaillée d'une propriété** (tap sur case)~~ | ~~🟠 Moyenne~~ | ~~Faible~~ | ✅ Fait |
+| ~~**Option Abandonner** (forfait en cours de partie)~~ | ~~🟠 Moyenne~~ | ~~Faible~~ | ✅ Fait |
 
 ---
 
@@ -161,31 +161,33 @@ Transformer le jeu local actuel géré par Zustand en une architecture Client-Se
 
 > **Objectif :** Transformer le prototype jouable en un Monopoly aux règles correctes.
 
-### 7.1 Constructions — Maisons & Hôtels 🏠
-- [ ] Ajouter un bouton "Construire" dans le HUD (visible en fin de tour si le joueur possède un monopole).
-- [ ] Règle : On ne peut construire que sur un **groupe de couleur complet** (monopole).
-- [ ] Règle : Construction uniforme obligatoire (écart max 1 maison entre les cases d'un même groupe).
-- [ ] Banque limitée : 32 maisons et 12 hôtels en réserve (shared resource).
-- [ ] L'hôtel remplace 4 maisons (houseCount = 5 dans le store = hôtel).
-- [ ] Mettre à jour `SpaceTile` pour afficher le nombre de maisons/hôtel visuellement.
+### 7.1 Constructions — Maisons & Hôtels 🏠 ✅
+- [x] Ajouter des boutons "Construire" et "Vendre" dans la modale de propriété (`PropertyDetailModal`).
+- [x] Règle : On ne peut construire que sur un **groupe de couleur complet** (monopole).
+- [x] Règle : Construction uniforme obligatoire (écart max 1 maison entre les cases d'un même groupe).
+- [x] Banque limitée : 32 maisons et 12 hôtels en réserve (`useGameStore`).
+- [x] L'hôtel remplace 4 maisons (houseCount = 5 dans le store = hôtel).
+- [x] Mettre à jour `SpaceTile` pour afficher le nombre de maisons/hôtel visuellement sur la bande de couleur.
 
-### 7.2 Loyers Progressifs
-- [ ] Compléter `rentCalculator.ts` : appliquer la grille de loyers par niveau de maison (0→1→2→3→4→hôtel).
-- [ ] Bonus ×2 sur le loyer de base si le joueur possède le monopole complet **sans aucune maison**.
-- [ ] Gares : loyer basé sur le nombre de gares possédées (1=25, 2=50, 3=100, 4=200 AR).
-- [ ] Services publics : loyer = dés × multiplicateur (×4 si 1 service, ×10 si 2 services).
+### 7.2 Loyers Progressifs ✅
+- [x] `rentCalculator.ts` complet : grille de loyers par niveau de maison (0→1→2→3→4→hôtel).
+- [x] Bonus ×2 sur le loyer de base si le joueur possède le monopole complet **sans aucune maison** (`hasMonopoly()`).
+- [x] Gares : loyer basé sur le nombre de gares possédées (1=25, 2=50, 3=100, 4=200 AR) via `countOwned()`.
+- [x] Services publics : loyer = dés × multiplicateur (×4 si 1 service, ×10 si 2 services).
 
-### 7.3 Mécanique de Prison Complète
-- [ ] Ajouter la phase `IN_JAIL_DECISION` dans `TurnPhase`.
-- [ ] Options à chaque tour en prison : payer 50 AR, utiliser carte "Sortir de prison", ou lancer les dés (double = sortie).
-- [ ] Maximum 3 tours en prison — sortie forcée au 3e tour (avec paiement de 50 AR).
-- [ ] Afficher une UI dédiée au HUD quand le joueur est en prison.
+### 7.3 Mécanique de Prison Complète ✅
+- [x] Ajouter la phase `IN_JAIL_DECISION` dans `TurnPhase`.
+- [x] Options à chaque tour en prison : payer 50 AR, utiliser carte "Sortir de prison", ou lancer les dés (double = sortie).
+- [x] Maximum 3 tours en prison — sortie forcée au 3e tour (avec paiement de 50 AR).
+- [x] Afficher une UI dédiée au HUD quand le joueur est en prison (`JailPanel.tsx`).
+- [x] Logique IA des bots : paient si solde suffisant, sinon tentent un double.
+- [x] Réseau : `REQUEST_PAY_BAIL`, `REQUEST_USE_JAIL_CARD`, `REQUEST_ROLL_JAIL` dans le handler de l'hôte.
 
-### 7.4 Deck de Cartes Magie-Magie & Ankamantatra
-- [ ] Créer `src/constants/cards.ts` avec les 16 cartes Magie-Magie et 16 cartes Ankamantatra thématisées Madagascar.
-- [ ] Implémenter le tirage aléatoire (mélange du deck, remise en fin de pile).
-- [ ] Types d'effets : gain/perte d'argent, déplacement, aller en prison, sortir de prison, payer par joueur.
-- [ ] Afficher une modale "carte révélée" avec animation flip.
+### 7.4 Deck de Cartes Magie-Magie & Ankamantatra ✅
+- [x] Créer `src/constants/cards.ts` avec les 16 cartes Magie-Magie et 16 cartes Ankamantatra thématisées Madagascar.
+- [x] Implémenter le tirage aléatoire (mélange du deck, remise en fin de pile).
+- [x] Types d'effets : gain/perte d'argent, déplacement, aller en prison, sortir de prison, payer par joueur.
+- [x] Afficher une modale "carte révélée" avec animation flip (`CardModal.tsx`).
 
 ---
 
@@ -217,25 +219,26 @@ Transformer le jeu local actuel géré par Zustand en une architecture Client-Se
 
 ## 🌐 Phase 9 : Réseau Avancé
 
-### 9.1 Saisie des noms en lobby (réseau)
-- [ ] Le client envoie `{ type: 'SET_PLAYER_NAME', payload: { name } }` après `ASSIGN_PLAYER_ID`.
-- [ ] L'hôte met à jour le `playersSetup` et rediffuse la liste.
+### 9.1 Saisie des noms et avatars en lobby (réseau) ✅
+- [x] Le client envoie `{ type: 'SET_PLAYER_INFO', payload: { name, avatar } }` après `ASSIGN_PLAYER_ID`.
+- [x] L'hôte met à jour le `connectedClients` et synchronise.
+- [x] Saisie dans l'UI du lobby (pseudo + emojis/icônes).
 
 ### 9.2 Reconnexion après déconnexion
 - [ ] Stocker l'état de partie côté hôte avec `localPlayerId`.
 - [ ] Si un client se reconnecte avec le même `localPlayerId`, lui re-syncer l'état complet.
 - [ ] Timeout de 60s avant de considérer le joueur abandonné (bot prend le relais).
 
-### 9.3 Hypothèques
-- [ ] Ajouter `isMortgaged: boolean` à `PropertyState`.
-- [ ] Hypothéquer : reçoit 50% du prix d'achat, loyer suspendu.
-- [ ] Lever l'hypothèque : payer 110% du prix d'hypothèque.
-- [ ] Afficher le statut dans le tableau de propriétés.
+### 9.3 Hypothèques ✅
+- [x] Ajouter `isMortgaged: boolean` à `PropertyState`.
+- [x] Hypothéquer : reçoit 50% du prix d'achat, loyer suspendu.
+- [x] Lever l'hypothèque : payer 110% du prix d'hypothèque.
+- [x] Afficher le statut dans le tableau de propriétés et sur le plateau.
 
-### 9.4 Échanges entre joueurs
-- [ ] Interface de proposition (propriétés + argent contre propriétés + argent).
-- [ ] Envoi de l'offre via réseau : `{ type: 'TRADE_OFFER', payload: { ... } }`.
-- [ ] Acceptation/Refus, validation par l'hôte.
+### 9.4 Échanges entre joueurs ✅
+- [x] Interface de proposition (propriétés + argent contre propriétés + argent).
+- [x] Envoi de l'offre via réseau : `{ type: 'REQUEST_TRADE', payload: { ... } }`.
+- [x] Acceptation/Refus, validation par l'hôte.
 
 ---
 
@@ -243,18 +246,18 @@ Transformer le jeu local actuel géré par Zustand en une architecture Client-Se
 
 > **Objectif :** Rendre la partie plus agréable, plus lisible et plus personnalisable. Ces fonctionnalités sont indépendantes les unes des autres et peuvent être développées dans n'importe quel ordre.
 
-### 10.1 Historique de Partie (Game Log) 📜
-- [ ] Maintenir un tableau `gameLog: string[]` dans le store, alimenté à chaque événement significatif (achat, loyer, prison, faillite, construction).
-- [ ] Composant `GameLogPanel` : panneau scrollable accessible via un bouton dans le HUD (icône 📜 ou ≡).
-- [ ] Format des entrées : `[Tour N] 🎲 Zaka a lancé 4+3 → Nosy Be` — horodatage par numéro de tour.
-- [ ] En réseau : le log est généré localement sur chaque appareil à partir des `STATE_UPDATE` reçus (pas besoin de le synchroniser).
-- [ ] Persister le log jusqu'à la fin de partie (reset à `initGame`).
+### 10.1 Historique de Partie (Game Log) 📜 ✅
+- [x] Maintenir un tableau `gameLog: string[]` dans le store, alimenté à chaque événement significatif (via `lastEvent`).
+- [x] Composant `GameLogPanel` : panneau scrollable accessible via un bouton dans le HUD (icône 📜).
+- [x] Format des entrées : `[Tour N] 🎲 Zaka a lancé 4+3` — horodatage par numéro de tour.
+- [x] En réseau : le log est synchronisé dans le payload `STATE_UPDATE`.
+- [x] Persister le log jusqu'à la fin de partie (reset à `initGame`).
 
-### 10.2 Choix du Nombre de Bots 🤖
-- [ ] Dans le lobby (mode solo ET mode hôte), ajouter un sélecteur `[− 1 Bot +]` pour choisir entre 0 et 3 bots.
-- [ ] La somme `joueurs humains + bots` doit rester entre 2 et 4.
-- [ ] En mode réseau : si des clients sont connectés, les slots restants sont proposés comme bots.
-- [ ] Passer le nombre de bots à `startGame()` / `startSolo()` pour adapter `playersSetup`.
+### 10.2 Choix du Nombre de Bots 🤖 ✅
+- [x] Dans le lobby (mode solo ET mode hôte), ajouter un sélecteur `[− 1 Bot +]` pour choisir entre 0 et 3 bots.
+- [x] La somme `joueurs humains + bots` doit rester entre 2 et 4.
+- [x] En mode réseau : si des clients sont connectés, les slots restants sont proposés comme bots.
+- [x] Passer le nombre de bots à `startGame()` / `startSolo()` pour adapter `playersSetup`.
 
 ### 10.3 Conditions de Victoire Personnalisées 🏆
 
@@ -273,41 +276,41 @@ Transformer le jeu local actuel géré par Zustand en une architecture Client-Se
 
 ### 10.4 Panneau des Propriétés 🗃️
 
-#### 10.4.a Mes Propriétés
-- [ ] Bouton dédié dans le HUD (icône 🏘️ ou « Mes biens »), accessible à tout moment.
-- [ ] Liste scrollable des propriétés du joueur local : nom, couleur de groupe, nb maisons, loyer actuel.
-- [ ] Indicateur de monopole : ✅ si le groupe est complet, sinon afficher les cases manquantes.
-- [ ] Bouton "Construire" inline sur chaque propriété éligible (si monopole + fonds suffisants + fin de tour).
-- [ ] Bouton "Hypothéquer" inline sur chaque propriété (Phase 9.3).
+### 10.4 Panneaux de Propriétés 🏠 ✅
 
-#### 10.4.b Voir les Propriétés d'un Adversaire
-- [ ] Tap sur la `PlayerCard` d'un adversaire → ouvre un panneau lecture seule de ses propriétés.
-- [ ] Afficher : nom, groupe de couleur, nb maisons, loyer actuel — sans les boutons d'action.
-- [ ] En réseau : les données sont déjà dans le `STATE_UPDATE`, aucune requête supplémentaire nécessaire.
+#### 10.4.a "Mes Propriétés" / Propriétés d'un joueur
+- [x] En appuyant sur sa `PlayerCard` (ou celle d'un adversaire), ouvrir un panneau (`PlayerPropertiesModal`).
+- [x] Afficher la liste de toutes les propriétés acquises, triées par couleur.
+- [x] Afficher l'état (nombre de maisons/hôtel, ou si elle est hypothéquée).
+- [x] Accessible à tous (lecture seule pour les adversaires).
+- [x] En réseau : les données sont déjà dans le `STATE_UPDATE`, aucune requête supplémentaire nécessaire.
 
-### 10.5 Fiche Détaillée d'une Propriété 📋
-- [ ] Tap long (ou tap simple en mode info) sur une case du plateau → ouvre une modale `PropertyInfoModal`.
-- [ ] Contenu : nom, image/icône, groupe de couleur, prix d'achat, grille des loyers (0 à hôtel), propriétaire actuel, nb maisons.
-- [ ] Accessible à tous (hôte, client, n'importe quel joueur) en lecture seule.
-- [ ] Différencier visuellement les propriétés libres / achetées / hypothéquées.
+### 10.5 Fiche Détaillée d'une Propriété (Tap sur case) 🔍 ✅
+- [x] Rendre chaque `SpaceTile` interactive (tappable).
+- [x] Au clic, ouvrir une modale (`PropertyDetailModal`) qui ressemble à la vraie carte du jeu de société.
+- [x] Afficher : Prix d'achat, Loyer de base, Loyers avec 1/2/3/4 maisons, Loyer avec hôtel, Prix de construction.
+- [x] Afficher le propriétaire actuel s'il y en a un.
+- [x] Accessible à tous (hôte, client, n'importe quel joueur) en lecture seule.
+- [x] Différencier visuellement les propriétés libres / achetées / hypothéquées.
 
-### 10.6 Payer pour Sortir de Prison (Caution) ⛓️
-- [ ] Quand `currentPlayer.inJail === true` et que c'est le tour du joueur local, afficher un panneau dédié dans le HUD.
-- [ ] Trois boutons d'action :
+### 10.6 Payer pour Sortir de Prison (Caution) ⛓️ ✅
+- [x] Quand `currentPlayer.inJail === true` et que c'est le tour du joueur local, afficher un panneau dédié dans le HUD (`JailPanel.tsx`).
+- [x] Trois boutons d'action :
   - **Payer 50 AR** : débite le solde, sort de prison immédiatement, lance les dés normalement.
   - **Utiliser une carte** : visible uniquement si `hasGetOutOfJailCard === true`.
   - **Tenter un double** : lance les dés — double = sortie libre, sinon reste en prison (tour consommé).
-- [ ] Après le 3e tour en prison sans double : sortie forcée avec paiement automatique de 50 AR.
-- [ ] En réseau : le choix est envoyé comme `REQUEST_JAIL_ACTION` au même titre que `REQUEST_ROLL_DICE`.
+- [x] Après le 3e tour en prison sans double : sortie forcée avec paiement automatique de 50 AR.
+- [x] En réseau : `REQUEST_PAY_BAIL`, `REQUEST_USE_JAIL_CARD`, `REQUEST_ROLL_JAIL`.
 
-### 10.7 Option Abandonner (Forfait) 🏳️
-- [ ] Bouton discret "Abandonner" accessible depuis un menu contextuel (icône ⚙️ ou ≡ dans le HUD).
-- [ ] Confirmation requise : modale "Confirmer le forfait ? Vos propriétés retourneront à la banque."
-- [ ] Comportement : déclenche `handleBankruptcy(playerId, null)` — propriétés libérées, solde à 0, marqué `isBankrupt`.
-- [ ] En solo : si le joueur humain abandonne, la partie continue entre bots jusqu'à GAME_OVER (ou affiche directement le résultat).
-- [ ] En réseau :
-  - **Client abandonne** : envoie `{ type: 'REQUEST_FORFEIT' }` → l'hôte exécute `handleBankruptcy` et broadcast le `STATE_UPDATE`.
-  - **Hôte abandonne** : un vote de transfert d'autorité peut être proposé à un client (évolution future), sinon la partie se termine.
+### 10.7 Option Abandonner (Forfait) 🏳️ ✅
+- [x] Bouton discret "⚙️" dans le HUD (`ForfeitButton.tsx`) — coin supérieur droit.
+- [x] Confirmation requise : modale "Confirmer le forfait ? Vos propriétés retourneront à la banque."
+- [x] Comportement : déclenche `handleBankruptcy(playerId, null)` — propriétés libérées, solde à 0, marqué `isBankrupt`.
+- [x] Passage de tour : Si le joueur abandonne **pendant son tour**, le tour passe automatiquement au joueur suivant.
+- [x] En solo ou réseau : si **tous les joueurs humains** abandonnent (ou font faillite), la partie se termine immédiatement (GAME_OVER).
+- [x] En réseau :
+  - **Client abandonne** : envoie `{ type: 'REQUEST_FORFEIT', payload: { playerId } }` → l'hôte exécute `handleBankruptcy`.
+  - **Hôte abandonne** : exécute localement `handleBankruptcy(localPlayerId, null)`.
 
 ---
 

@@ -6,17 +6,22 @@ import { useGameStore } from '../store/useGameStore';
 
 type LobbyMode = 'select' | 'host' | 'client';
 
+const AVATARS = ['🎩', '🚗', '🐕', '🚢', '👟', '🛒', '🐴', '🚜'];
+
 export const LobbyScreen = () => {
   const [mode, setMode] = useState<LobbyMode>('select');
   const [hostIp, setHostIp] = useState<string>('');
   const [clientInputIp, setClientInputIp] = useState<string>('');
-  const [connectedClients, setConnectedClients] = useState<{socketId: string, playerId: string}[]>([]);
+  const [connectedClients, setConnectedClients] = useState<{socketId: string, playerId: string, name?: string, avatar?: string}[]>([]);
   const [isConnecting, setIsConnecting] = useState(false);
   const [connectionError, setConnectionError] = useState('');
   const [botCount, setBotCount] = useState(3); // Default: 3 bots for solo, adjusts for network
   
   const setNetworkRole = useGameStore(s => s.setNetworkRole);
   const setLocalPlayerId = useGameStore(s => s.setLocalPlayerId);
+  const setLocalPlayerInfo = useGameStore(s => s.setLocalPlayerInfo);
+  const localPlayerName = useGameStore(s => s.localPlayerName);
+  const localPlayerAvatar = useGameStore(s => s.localPlayerAvatar);
   const setAppScreen = useGameStore(s => s.setAppScreen);
   const syncState = useGameStore(s => s.syncState);
   const initGame = useGameStore(s => s.initGame);
@@ -36,7 +41,22 @@ export const LobbyScreen = () => {
     });
 
     NetworkManager.onDisconnect((clientId) => {
-      setConnectedClients((prev) => prev.filter(c => c.socketId !== clientId));
+      setConnectedClients((prev) => {
+        const client = prev.find(c => c.socketId === clientId);
+        
+        // If we are the host and a client disconnected mid-game, forfeit them to prevent the game from getting stuck
+        if (clientId !== 'host' && client) {
+          const state = useGameStore.getState();
+          if (state.appScreen === 'game' && state.networkRole === 'host') {
+            setTimeout(() => {
+              useGameStore.getState().handleBankruptcy(client.playerId, null);
+            }, 0);
+          }
+        }
+        
+        return prev.filter(c => c.socketId !== clientId);
+      });
+
       if (clientId === 'host') {
         // We were a client and the host disconnected
         const { appScreen } = useGameStore.getState();
@@ -57,6 +77,23 @@ export const LobbyScreen = () => {
         const { playerId } = packet.payload;
         // Store our local player ID
         useGameStore.getState().setLocalPlayerId(playerId);
+        
+        // Send our info to the host
+        const state = useGameStore.getState();
+        NetworkManager.sendMessage({
+          type: 'SET_PLAYER_INFO',
+          payload: { name: state.localPlayerName, avatar: state.localPlayerAvatar }
+        });
+        return;
+      }
+
+      // Host: receive client's info
+      if (packet.type === 'SET_PLAYER_INFO' && clientId) {
+        setConnectedClients(prev => prev.map(c => 
+          c.socketId === clientId 
+            ? { ...c, name: packet.payload.name, avatar: packet.payload.avatar }
+            : c
+        ));
         return;
       }
 
@@ -76,6 +113,27 @@ export const LobbyScreen = () => {
         if (packet.type === 'REQUEST_PAY_BAIL') useGameStore.getState().payBail();
         if (packet.type === 'REQUEST_USE_JAIL_CARD') useGameStore.getState().useJailCard();
         if (packet.type === 'REQUEST_ROLL_JAIL') useGameStore.getState().rollForJailBreak();
+        if (packet.type === 'REQUEST_BUILD_HOUSE') useGameStore.getState().buildHouse(packet.payload.propertyId);
+        if (packet.type === 'REQUEST_SELL_HOUSE') useGameStore.getState().sellHouse(packet.payload.propertyId);
+        if (packet.type === 'REQUEST_MORTGAGE') useGameStore.getState().mortgageProperty(packet.payload.propertyId);
+        if (packet.type === 'REQUEST_UNMORTGAGE') useGameStore.getState().unmortgageProperty(packet.payload.propertyId);
+        if (packet.type === 'REQUEST_TRADE') useGameStore.getState().proposeTrade(packet.payload);
+        if (packet.type === 'RESPOND_TRADE') useGameStore.getState().respondToTrade(packet.payload.accept);
+        if (packet.type === 'CANCEL_TRADE') useGameStore.getState().cancelTrade();
+        if (packet.type === 'REQUEST_FORFEIT' && clientId) {
+          // The packet.payload may contain the playerId, or we match via
+          // the connectedClients state. Since this closure may be stale,
+          // we use a fresh lookup from the store's players list.
+          // Each client's playerId was assigned on connection.
+          const state = useGameStore.getState();
+          const clientPlayer = state.players.find(p => !p.isBot && p.id !== 'host' && !p.isBankrupt);
+          // Safer: look up by packet payload if available
+          if (packet.payload?.playerId) {
+            state.handleBankruptcy(packet.payload.playerId, null);
+          } else if (clientPlayer) {
+            state.handleBankruptcy(clientPlayer.id, null);
+          }
+        }
       }
     });
 
@@ -116,20 +174,30 @@ export const LobbyScreen = () => {
     setLocalPlayerId(hostPlayerId);
 
     // Create initial players. Host + connected clients + bots.
-    const playersSetup: {id: string, name: string, isBot: boolean}[] = [
-      { id: hostPlayerId, name: 'Hôte', isBot: false },
-      ...connectedClients.map((c, i) => ({ id: c.playerId, name: `Joueur ${i + 2}`, isBot: false }))
+    const playersSetup: {id: string, name: string, avatar: string, isBot: boolean}[] = [
+      { id: hostPlayerId, name: localPlayerName, avatar: localPlayerAvatar, isBot: false },
+      ...connectedClients.map((c, i) => ({ 
+        id: c.playerId, 
+        name: c.name || `Joueur ${i + 2}`, 
+        avatar: c.avatar || AVATARS[(i + 1) % AVATARS.length], 
+        isBot: false 
+      }))
     ];
     
     // Add bots up to botCount (but cap at 4 total)
     const maxBots = Math.min(botCount, 4 - playersSetup.length);
     for (let i = 0; i < maxBots; i++) {
-      playersSetup.push({ id: `bot-${playersSetup.length}`, name: `Bot ${i + 1}`, isBot: true });
+      playersSetup.push({ 
+        id: `bot-${playersSetup.length}`, 
+        name: `Bot ${i + 1}`, 
+        avatar: AVATARS[(playersSetup.length) % AVATARS.length], 
+        isBot: true 
+      });
     }
 
     // Ensure minimum 2 players
     if (playersSetup.length < 2) {
-      playersSetup.push({ id: 'bot-fill', name: 'Bot 1', isBot: true });
+      playersSetup.push({ id: 'bot-fill', name: 'Bot 1', avatar: '🤖', isBot: true });
     }
 
     initGame(playersSetup);
@@ -150,13 +218,19 @@ export const LobbyScreen = () => {
   const minBotsForHost = Math.max(0, 2 - 1 - connectedClients.length); // ensure >= 2 total
 
   const startSolo = () => {
-    setNetworkRole('local'); 
-    setLocalPlayerId('p1');
-    const playersSetup: {id: string, name: string, isBot: boolean}[] = [
-      {id:'p1', name:'Joueur 1', isBot:false},
+    setMode('host');
+    setNetworkRole('local');
+    setLocalPlayerId('player1');
+    const playersSetup: {id: string, name: string, avatar: string, isBot: boolean}[] = [
+      { id: 'player1', name: localPlayerName, avatar: localPlayerAvatar, isBot: false },
     ];
     for (let i = 0; i < botCount; i++) {
-      playersSetup.push({ id: `b${i + 1}`, name: `Bot ${i + 1}`, isBot: true });
+      playersSetup.push({ 
+        id: `b${i + 1}`, 
+        name: `Bot ${i + 1}`, 
+        avatar: AVATARS[(i + 1) % AVATARS.length], 
+        isBot: true 
+      });
     }
     initGame(playersSetup); 
     setAppScreen('game'); 
@@ -171,6 +245,31 @@ export const LobbyScreen = () => {
 
       {mode === 'select' && (
         <View style={styles.content}>
+          <Text style={styles.stepperLabel}>Votre Identité</Text>
+          <View style={styles.identityRow}>
+            <TextInput
+              style={styles.nameInput}
+              value={localPlayerName}
+              onChangeText={(t) => setLocalPlayerInfo(t, localPlayerAvatar)}
+              placeholder="Votre pseudo"
+              placeholderTextColor="#999"
+              maxLength={12}
+            />
+          </View>
+          <View style={styles.avatarList}>
+            {AVATARS.map(a => (
+              <TouchableOpacity 
+                key={a} 
+                style={[styles.avatarBtn, localPlayerAvatar === a && styles.avatarBtnActive]}
+                onPress={() => setLocalPlayerInfo(localPlayerName, a)}
+              >
+                <Text style={styles.avatarEmoji}>{a}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+
+          <View style={styles.divider} />
+
           <TouchableOpacity style={styles.button} onPress={handleHost}>
             <Text style={styles.buttonText}>Héberger une partie</Text>
           </TouchableOpacity>
@@ -300,6 +399,53 @@ const styles = StyleSheet.create({
   ipText: { fontSize: 38, fontFamily: 'Inter_900Black', color: '#FFF', marginVertical: 15 },
   clientText: { color: COLORS.secondary, fontFamily: 'Inter_700Bold', fontSize: 16, marginVertical: 8 },
   waitText: { color: '#AAA', fontFamily: 'Inter_400Regular', fontSize: 16, marginTop: 15, textAlign: 'center' },
+  stepperInfo: {
+    fontFamily: 'Inter_400Regular',
+    color: '#888',
+    marginTop: 8,
+    marginBottom: 20,
+  },
+  identityRow: {
+    flexDirection: 'row',
+    marginBottom: 10,
+    width: '100%',
+  },
+  nameInput: {
+    flex: 1,
+    backgroundColor: '#FFF',
+    borderRadius: BORDER_RADIUS.md,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    fontFamily: 'Inter_700Bold',
+    fontSize: 16,
+    color: '#333',
+    borderWidth: 1,
+    borderColor: '#E0E0E0',
+  },
+  avatarList: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    gap: 10,
+    marginBottom: 10,
+  },
+  avatarBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: '#F5F5F5',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: 'transparent',
+  },
+  avatarBtnActive: {
+    borderColor: COLORS.primary,
+    backgroundColor: '#E8F5E9',
+  },
+  avatarEmoji: {
+    fontSize: 24,
+  },
   errorText: { color: '#E10214', fontFamily: 'Inter_700Bold', fontSize: 16, marginBottom: 20, textAlign: 'center' },
   divider: { height: 1, backgroundColor: '#333', width: '100%', marginVertical: 25 },
   buttonTextOnly: { marginTop: 10, padding: 10 },

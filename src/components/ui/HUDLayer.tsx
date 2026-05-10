@@ -8,6 +8,12 @@ import { PropertyModal } from './PropertyModal';
 import { EventToast } from './EventToast';
 import { DisconnectModal } from './DisconnectModal';
 import { JailPanel } from './JailPanel';
+import { ForfeitButton } from './ForfeitButton';
+import { GameLogPanel } from './GameLogPanel';
+import { PlayerPropertiesModal } from './PlayerPropertiesModal';
+import { PropertyDetailModal } from './PropertyDetailModal';
+import { CardModal } from './CardModal';
+import { TradeModal } from './TradeModal';
 
 /**
  * HUDLayer is an absolute overlay on top of the entire GameScreen.
@@ -26,7 +32,9 @@ export const HUDLayer = () => {
   const turnPhase = useGameStore((s) => s.turnPhase);
   const lastDiceRoll = useGameStore((s) => s.lastDiceRoll);
   const rollDice = useGameStore((s) => s.rollDice);
-  const localPlayerId = useGameStore((s) => s.localPlayerId);
+  const localPlayerId = useGameStore(s => s.localPlayerId);
+  const setIsGameLogOpen = useGameStore(s => s.setIsGameLogOpen);
+  const [isTradeModalOpen, setIsTradeModalOpen] = React.useState(false);
 
   const currentPlayer = players[currentPlayerIndex];
   const isLocalPlayerTurn = currentPlayer?.id === localPlayerId;
@@ -43,8 +51,16 @@ export const HUDLayer = () => {
   return (
     <View style={styles.overlay} pointerEvents="box-none">
       <SafeAreaView style={styles.safeArea} pointerEvents="box-none">
-        {/* ─── TOP: Player Cards ─── */}
+        {/* ─── TOP: Player Cards + Settings ─── */}
         <View style={styles.topBar} pointerEvents="box-none">
+          <TouchableOpacity 
+            style={styles.logButton}
+            onPress={() => setIsGameLogOpen(true)}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.logButtonIcon}>📜</Text>
+          </TouchableOpacity>
+          <ForfeitButton />
           <View style={styles.playerCardsRow}>
             {players.map((player, index) => (
               <PlayerCard
@@ -55,6 +71,8 @@ export const HUDLayer = () => {
             ))}
           </View>
         </View>
+
+        <EventToast />
 
         {/* ─── CENTER: Transparent (pass-through) ─── */}
         <View style={styles.centerSpacer} pointerEvents="none">
@@ -82,14 +100,25 @@ export const HUDLayer = () => {
 
           {/* Roll button — only visible when it's time to roll */}
           {canRoll && !isGameOver && (
-            <TouchableOpacity
-              style={styles.rollButton}
-              onPress={rollDice}
-              activeOpacity={0.8}
-            >
-              <Text style={styles.rollButtonIcon}>🎲</Text>
-              <Text style={styles.rollButtonText}>LANCER LES DÉS</Text>
-            </TouchableOpacity>
+            <View style={{ flexDirection: 'row', gap: 10 }}>
+              <TouchableOpacity
+                style={styles.rollButton}
+                onPress={rollDice}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.rollButtonIcon}>🎲</Text>
+                <Text style={styles.rollButtonText}>LANCER</Text>
+              </TouchableOpacity>
+              
+              <TouchableOpacity
+                style={[styles.rollButton, { backgroundColor: '#333' }]}
+                onPress={() => setIsTradeModalOpen(true)}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.rollButtonIcon}>🤝</Text>
+                <Text style={styles.rollButtonText}>ÉCHANGER</Text>
+              </TouchableOpacity>
+            </View>
           )}
 
           {/* Phase indicator (for non-interactive phases only) */}
@@ -130,6 +159,15 @@ export const HUDLayer = () => {
 
       {/* ─── DISCONNECT MODAL (blocks screen on connection loss) ─── */}
       <DisconnectModal />
+      <GameLogPanel />
+      <PlayerPropertiesModal />
+      <PropertyDetailModal />
+      <CardModal />
+      <TradeModal 
+        visible={isTradeModalOpen} 
+        onClose={() => setIsTradeModalOpen(false)} 
+        onCounterOffer={() => setIsTradeModalOpen(true)}
+      />
     </View>
   );
 };
@@ -143,11 +181,28 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight : 0,
   },
-
-  // ─── TOP BAR ───
   topBar: {
+    paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight || 0 : 0,
     paddingHorizontal: SPACING.sm,
-    paddingTop: SPACING.sm,
+    paddingBottom: SPACING.md,
+    alignItems: 'center',
+    position: 'relative',
+    zIndex: 10,
+  },
+  logButton: {
+    position: 'absolute',
+    top: 8 + (Platform.OS === 'android' ? StatusBar.currentHeight || 0 : 0),
+    left: 8,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 10,
+  },
+  logButtonIcon: {
+    fontSize: 20,
   },
   playerCardsRow: {
     flexDirection: 'row',
@@ -155,8 +210,6 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     gap: 6,
   },
-
-  // ─── CENTER ───
   centerSpacer: {
     flex: 1,
   },
@@ -190,7 +243,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     backgroundColor: COLORS.primary,
     paddingVertical: 14,
-    paddingHorizontal: 32,
+    paddingHorizontal: 20,
     borderRadius: BORDER_RADIUS.xl,
     gap: 10,
     // Premium shadow

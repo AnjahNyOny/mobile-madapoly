@@ -1,5 +1,6 @@
 import React from 'react';
-import { StyleSheet, View, Text } from 'react-native';
+import { StyleSheet, View, Text, TouchableOpacity } from 'react-native';
+import { useGameStore } from '../../store/useGameStore';
 import { Player } from '../../types';
 import { COLORS, SPACING, BORDER_RADIUS } from '../../styles/theme';
 
@@ -15,20 +16,25 @@ interface PlayerCardProps {
  */
 export const PlayerCard = React.memo(({ player, isActive }: PlayerCardProps) => {
   const isBankrupt = player.isBankrupt;
+  const setSelectedPlayerIdForProps = useGameStore(s => s.setSelectedPlayerIdForProps);
 
   return (
-    <View style={[
-      styles.card,
-      isActive && !isBankrupt && styles.cardActive,
-      isBankrupt && styles.cardBankrupt,
-    ]}>
+    <TouchableOpacity 
+      activeOpacity={0.8}
+      onPress={() => setSelectedPlayerIdForProps(player.id)}
+      style={[
+        styles.card,
+        isActive && !isBankrupt && styles.cardActive,
+        isBankrupt && styles.cardBankrupt,
+      ]}
+    >
       {/* Active indicator dot */}
       {isActive && !isBankrupt && <View style={styles.activeDot} />}
 
       {/* Player avatar circle */}
       <View style={[styles.avatar, isActive && !isBankrupt && styles.avatarActive]}>
         <Text style={styles.avatarText}>
-          {isBankrupt ? '💀' : player.isBot ? '🤖' : '👤'}
+          {isBankrupt ? '💀' : player.avatar || (player.isBot ? '🤖' : '👤')}
         </Text>
       </View>
 
@@ -54,7 +60,7 @@ export const PlayerCard = React.memo(({ player, isActive }: PlayerCardProps) => 
           {isBankrupt ? 'FAILLITE' : `${player.balance.toLocaleString()} AR`}
         </Text>
       </View>
-    </View>
+    </TouchableOpacity>
   );
 });
 

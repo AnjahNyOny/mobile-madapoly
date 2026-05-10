@@ -23,6 +23,7 @@ const PLAYER_EMOJIS = ['👤', '🤖', '🎭', '🦊'];
 interface PlayerTokenProps {
   playerId: string;
   playerName: string;
+  avatar: string;
   isBot: boolean;
   position: number;
   playerIndex: number;
@@ -32,6 +33,7 @@ interface PlayerTokenProps {
 const PlayerToken = React.memo(({ 
   playerId,
   playerName,
+  avatar,
   isBot,
   position,
   playerIndex, 
@@ -109,7 +111,7 @@ const PlayerToken = React.memo(({
   }));
 
   const color = PLAYER_COLORS[playerIndex % PLAYER_COLORS.length];
-  const emoji = PLAYER_EMOJIS[playerIndex % PLAYER_EMOJIS.length];
+  const emoji = avatar || (isBot ? '🤖' : '👤');
 
   return (
     <Animated.View style={[styles.token, animatedStyle]}>
@@ -124,7 +126,7 @@ const PlayerToken = React.memo(({
       {/* Player initial label */}
       <View style={[styles.tokenLabel, { backgroundColor: color }]}>
         <Text style={styles.tokenLabelText}>
-          {playerName.charAt(0).toUpperCase()}
+          {playerName ? playerName.charAt(0).toUpperCase() : '?'}
         </Text>
       </View>
     </Animated.View>
@@ -145,6 +147,7 @@ export const TokenLayer = () => {
           key={player.id}
           playerId={player.id}
           playerName={player.name}
+          avatar={player.avatar}
           isBot={player.isBot}
           position={player.position}
           playerIndex={index}

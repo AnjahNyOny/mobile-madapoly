@@ -11,6 +11,7 @@ export type TurnPhase =
 export interface Player {
   id: string;
   name: string;
+  avatar: string;
   isBot: boolean;
   balance: number;       
   position: number;      // Index 0 à 39 sur le plateau
@@ -24,6 +25,7 @@ export interface PropertyState {
   id: string;            // Ex: '1' pour Tsingy
   ownerId: string | null;
   houseCount: number;    // 0 à 5 (5 = hôtel)
+  isMortgaged?: boolean;
 }
 
 export type BoardDynamicState = Record<string, PropertyState>;
@@ -36,4 +38,19 @@ export interface GameState {
   consecutiveDoubles: number;
   lastDiceRoll: [number, number] | null;
   actionDeadline: number | null; // Pour le timer (timeout automatique)
+  gameLog: string[];
+  turnCount: number;
+  chanceDeck: number[];
+  communityChestDeck: number[];
+  activeTradeOffer: TradeOffer | null;
+}
+
+export interface TradeOffer {
+  id: string;
+  fromPlayerId: string;
+  toPlayerId: string;
+  offerMoney: number;
+  offerProperties: string[];
+  requestMoney: number;
+  requestProperties: string[];
 }

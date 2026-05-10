@@ -13,6 +13,10 @@ const connectedClients: Map<string, TcpSocket.Socket> = new Map();
 
 let clientSocket: TcpSocket.Socket | null = null;
 
+// ── TCP Message Buffers (handles packet fragmentation) ──
+let clientBuffer: string = '';                                    // Client-side buffer
+const hostBuffers: Map<string, string> = new Map();               // Host-side per-client buffers
+
 // Callbacks
 export type MessageHandler = (packet: NetworkPacket, clientId?: string) => void;
 let onMessageCallback: MessageHandler | null = null;
@@ -68,25 +72,31 @@ export const NetworkManager = {
         if (onConnectionCallback) onConnectionCallback(clientId);
 
         socket.on('data', (data) => {
-          try {
-            // TCP packets might be concatenated, we assume a newline separator logic or just pure JSON for now.
-            // Using split('\n') ensures we process batched packets correctly.
-            const messages = data.toString().trim().split('\n');
-            for (const msg of messages) {
-              if (!msg) continue;
+          // Accumulate data in the per-client buffer
+          let buffer = hostBuffers.get(clientId) || '';
+          buffer += data.toString();
+
+          // Process only complete newline-delimited messages
+          const parts = buffer.split('\n');
+          // Last element is either empty (if buffer ended with \n) or an incomplete message
+          hostBuffers.set(clientId, parts.pop() || '');
+
+          for (const msg of parts) {
+            if (!msg.trim()) continue;
+            try {
               const packet: NetworkPacket = JSON.parse(msg);
 
               // ── Heartbeat: Client replied with PONG ──
               if (packet.type === '__PONG__') {
                 clientLastPingTimestamp.set(clientId, Date.now());
-                continue; // Don't forward heartbeat to app logic
+                continue;
               }
 
               console.log(`[Host] Received from ${clientId}:`, packet.type);
               if (onMessageCallback) onMessageCallback(packet, clientId);
+            } catch (e) {
+              console.error(`[Host] Failed to parse message from ${clientId}:`, e);
             }
-          } catch (e) {
-            console.error(`[Host] Failed to parse data from ${clientId}:`, e);
           }
         });
 
@@ -97,6 +107,7 @@ export const NetworkManager = {
           clientDidDisconnect = true;
           connectedClients.delete(clientId);
           clientLastPingTimestamp.delete(clientId);
+          hostBuffers.delete(clientId); // Clean up buffer
           if (onDisconnectCallback) onDisconnectCallback(clientId);
         };
 
@@ -178,13 +189,13 @@ export const NetworkManager = {
       }
 
       // Guard: prevent double-fire of disconnect callback
-      // TCP sockets emit 'error' then 'close' sequentially
       let didDisconnect = false;
       const triggerDisconnect = () => {
         if (didDisconnect) return;
         didDisconnect = true;
         NetworkManager._stopClientHeartbeat();
         clientSocket = null;
+        clientBuffer = ''; // Clean up buffer
         if (onDisconnectCallback) onDisconnectCallback('host');
       };
 
@@ -201,24 +212,31 @@ export const NetworkManager = {
       });
 
       clientSocket.on('data', (data) => {
-        try {
-          const messages = data.toString().trim().split('\n');
-          for (const msg of messages) {
-            if (!msg) continue;
+        // Accumulate data in the client buffer
+        clientBuffer += data.toString();
+
+        // Process only complete newline-delimited messages
+        const parts = clientBuffer.split('\n');
+        // Last element is either empty (if buffer ended with \n) or an incomplete message
+        clientBuffer = parts.pop() || '';
+
+        for (const msg of parts) {
+          if (!msg.trim()) continue;
+          try {
             const packet: NetworkPacket = JSON.parse(msg);
 
             // ── Heartbeat: Host sent us a PING, reply with PONG ──
             if (packet.type === '__PING__') {
-              clientLastPongTimestamp = Date.now(); // Record that host is alive
+              clientLastPongTimestamp = Date.now();
               NetworkManager.sendMessage({ type: '__PONG__' });
-              continue; // Don't forward heartbeat to app logic
+              continue;
             }
 
             console.log(`[Client] Received:`, packet.type);
             if (onMessageCallback) onMessageCallback(packet, 'host');
+          } catch (e) {
+            console.error(`[Client] Failed to parse message:`, e);
           }
-        } catch (e) {
-          console.error(`[Client] Failed to parse data:`, e);
         }
       });
 
@@ -360,6 +378,9 @@ export const NetworkManager = {
     }
     connectedClients.clear();
     clientLastPingTimestamp.clear();
+    // Clear TCP buffers
+    clientBuffer = '';
+    hostBuffers.clear();
   },
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

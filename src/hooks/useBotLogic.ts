@@ -38,6 +38,8 @@ export const useBotLogic = () => {
   const buyProperty = useGameStore((s) => s.buyProperty);
   const skipPurchase = useGameStore((s) => s.skipPurchase);
   const endTurn = useGameStore((s) => s.endTurn);
+  const payBail = useGameStore((s) => s.payBail);
+  const rollForJailBreak = useGameStore((s) => s.rollForJailBreak);
 
   const networkRole = useGameStore((s) => s.networkRole);
 
@@ -64,10 +66,10 @@ export const useBotLogic = () => {
     if (!currentPlayer) return;
     if (currentPlayer.isBankrupt) return; // Le joueur en faillite ne joue plus
 
-    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     // END_OF_TURN → Avancer au joueur suivant
     // S'applique à TOUS les joueurs (humains et bots)
-    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     if (turnPhase === 'END_OF_TURN') {
       timeoutRef.current = setTimeout(() => {
         endTurn();
@@ -77,6 +79,22 @@ export const useBotLogic = () => {
 
     // ── Les actions suivantes ne concernent que les bots ──
     if (!currentPlayer.isBot) return;
+
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // IN_JAIL_DECISION → Le bot décide comment sortir de prison
+    // Stratégie : payer si solde suffisant, sinon tenter un double
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    if (turnPhase === 'IN_JAIL_DECISION') {
+      const canPayBail = currentPlayer.balance >= 50 + SAFETY_MARGIN;
+      timeoutRef.current = setTimeout(() => {
+        if (canPayBail) {
+          payBail();
+        } else {
+          rollForJailBreak();
+        }
+      }, DELAY_ROLL);
+      return;
+    }
 
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     // WAITING_FOR_DICE → Le bot "réfléchit" puis lance

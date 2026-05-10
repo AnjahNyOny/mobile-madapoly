@@ -13,6 +13,7 @@ export const LobbyScreen = () => {
   const [connectedClients, setConnectedClients] = useState<{socketId: string, playerId: string}[]>([]);
   const [isConnecting, setIsConnecting] = useState(false);
   const [connectionError, setConnectionError] = useState('');
+  const [botCount, setBotCount] = useState(3); // Default: 3 bots for solo, adjusts for network
   
   const setNetworkRole = useGameStore(s => s.setNetworkRole);
   const setLocalPlayerId = useGameStore(s => s.setLocalPlayerId);
@@ -72,6 +73,9 @@ export const LobbyScreen = () => {
         if (packet.type === 'REQUEST_BUY_PROPERTY') useGameStore.getState().buyProperty();
         if (packet.type === 'REQUEST_SKIP_PURCHASE') useGameStore.getState().skipPurchase();
         if (packet.type === 'REQUEST_END_TURN') useGameStore.getState().endTurn();
+        if (packet.type === 'REQUEST_PAY_BAIL') useGameStore.getState().payBail();
+        if (packet.type === 'REQUEST_USE_JAIL_CARD') useGameStore.getState().useJailCard();
+        if (packet.type === 'REQUEST_ROLL_JAIL') useGameStore.getState().rollForJailBreak();
       }
     });
 
@@ -111,15 +115,21 @@ export const LobbyScreen = () => {
     const hostPlayerId = 'host';
     setLocalPlayerId(hostPlayerId);
 
-    // Create initial players. Host + connected clients + bots to fill.
-    const playersSetup = [
+    // Create initial players. Host + connected clients + bots.
+    const playersSetup: {id: string, name: string, isBot: boolean}[] = [
       { id: hostPlayerId, name: 'Hôte', isBot: false },
       ...connectedClients.map((c, i) => ({ id: c.playerId, name: `Joueur ${i + 2}`, isBot: false }))
     ];
     
-    // Add bots if < 4 players total
-    while (playersSetup.length < 4) {
-      playersSetup.push({ id: `bot-${playersSetup.length}`, name: `Bot ${playersSetup.length}`, isBot: true });
+    // Add bots up to botCount (but cap at 4 total)
+    const maxBots = Math.min(botCount, 4 - playersSetup.length);
+    for (let i = 0; i < maxBots; i++) {
+      playersSetup.push({ id: `bot-${playersSetup.length}`, name: `Bot ${i + 1}`, isBot: true });
+    }
+
+    // Ensure minimum 2 players
+    if (playersSetup.length < 2) {
+      playersSetup.push({ id: 'bot-fill', name: 'Bot 1', isBot: true });
     }
 
     initGame(playersSetup);
@@ -135,15 +145,20 @@ export const LobbyScreen = () => {
     setAppScreen('game');
   };
 
+  // Max bots for host mode depends on connected clients
+  const maxBotsForHost = 4 - 1 - connectedClients.length; // 4 - host - clients
+  const minBotsForHost = Math.max(0, 2 - 1 - connectedClients.length); // ensure >= 2 total
+
   const startSolo = () => {
     setNetworkRole('local'); 
     setLocalPlayerId('p1');
-    initGame([
-      {id:'p1', name:'Joueur 1', isBot:false}, 
-      {id:'b1', name:'Bot 1', isBot:true},
-      {id:'b2', name:'Bot 2', isBot:true},
-      {id:'b3', name:'Bot 3', isBot:true}
-    ]); 
+    const playersSetup: {id: string, name: string, isBot: boolean}[] = [
+      {id:'p1', name:'Joueur 1', isBot:false},
+    ];
+    for (let i = 0; i < botCount; i++) {
+      playersSetup.push({ id: `b${i + 1}`, name: `Bot ${i + 1}`, isBot: true });
+    }
+    initGame(playersSetup); 
     setAppScreen('game'); 
   };
 
@@ -177,9 +192,30 @@ export const LobbyScreen = () => {
           </TouchableOpacity>
           
           <View style={styles.divider} />
+
+          {/* Bot count selector */}
+          <Text style={styles.stepperLabel}>🤖 Nombre de Bots</Text>
+          <View style={styles.stepper}>
+            <TouchableOpacity
+              style={[styles.stepperButton, botCount <= 1 && styles.stepperButtonDisabled]}
+              onPress={() => setBotCount(Math.max(1, botCount - 1))}
+              disabled={botCount <= 1}
+            >
+              <Text style={styles.stepperButtonText}>−</Text>
+            </TouchableOpacity>
+            <Text style={styles.stepperValue}>{botCount}</Text>
+            <TouchableOpacity
+              style={[styles.stepperButton, botCount >= 3 && styles.stepperButtonDisabled]}
+              onPress={() => setBotCount(Math.min(3, botCount + 1))}
+              disabled={botCount >= 3}
+            >
+              <Text style={styles.stepperButtonText}>+</Text>
+            </TouchableOpacity>
+          </View>
+          <Text style={styles.stepperInfo}>{botCount + 1} joueurs au total</Text>
           
-          <TouchableOpacity style={styles.buttonTextOnly} onPress={startSolo}>
-            <Text style={styles.linkText}>Jouer en solo (Local)</Text>
+          <TouchableOpacity style={styles.button} onPress={startSolo}>
+            <Text style={styles.buttonText}>Lancer la partie Solo</Text>
           </TouchableOpacity>
         </View>
       )}
@@ -194,6 +230,31 @@ export const LobbyScreen = () => {
             <Text style={styles.waitText}>En attente de joueurs...</Text>
           ) : (
             connectedClients.map((c, i) => <Text key={c.socketId} style={styles.clientText}>• Joueur {i + 2} ({c.socketId.split(':')[0]})</Text>)
+          )}
+
+          {/* Bot count selector for host */}
+          {maxBotsForHost > 0 && (
+            <>
+              <Text style={[styles.stepperLabel, { marginTop: 20 }]}>🤖 Bots supplémentaires</Text>
+              <View style={styles.stepper}>
+                <TouchableOpacity
+                  style={[styles.stepperButton, botCount <= minBotsForHost && styles.stepperButtonDisabled]}
+                  onPress={() => setBotCount(Math.max(minBotsForHost, botCount - 1))}
+                  disabled={botCount <= minBotsForHost}
+                >
+                  <Text style={styles.stepperButtonText}>−</Text>
+                </TouchableOpacity>
+                <Text style={styles.stepperValue}>{botCount}</Text>
+                <TouchableOpacity
+                  style={[styles.stepperButton, botCount >= maxBotsForHost && styles.stepperButtonDisabled]}
+                  onPress={() => setBotCount(Math.min(maxBotsForHost, botCount + 1))}
+                  disabled={botCount >= maxBotsForHost}
+                >
+                  <Text style={styles.stepperButtonText}>+</Text>
+                </TouchableOpacity>
+              </View>
+              <Text style={styles.stepperInfo}>{1 + connectedClients.length + botCount} joueurs au total</Text>
+            </>
           )}
           
           <TouchableOpacity 
@@ -242,5 +303,13 @@ const styles = StyleSheet.create({
   errorText: { color: '#E10214', fontFamily: 'Inter_700Bold', fontSize: 16, marginBottom: 20, textAlign: 'center' },
   divider: { height: 1, backgroundColor: '#333', width: '100%', marginVertical: 25 },
   buttonTextOnly: { marginTop: 10, padding: 10 },
-  linkText: { color: '#999', fontFamily: 'Inter_400Regular', fontSize: 16, textDecorationLine: 'underline' }
+  linkText: { color: '#999', fontFamily: 'Inter_400Regular', fontSize: 16, textDecorationLine: 'underline' },
+  // ── Bot Stepper ──
+  stepperLabel: { color: '#FFF', fontFamily: 'Inter_700Bold', fontSize: 15, marginBottom: 10, textAlign: 'center' },
+  stepper: { flexDirection: 'row', alignItems: 'center', gap: 20, marginBottom: 6 },
+  stepperButton: { width: 44, height: 44, borderRadius: 22, backgroundColor: COLORS.primary, justifyContent: 'center', alignItems: 'center' },
+  stepperButtonDisabled: { backgroundColor: '#333', opacity: 0.5 },
+  stepperButtonText: { color: '#FFF', fontSize: 22, fontFamily: 'Inter_900Black' },
+  stepperValue: { color: '#FFF', fontSize: 32, fontFamily: 'Inter_900Black', minWidth: 40, textAlign: 'center' },
+  stepperInfo: { color: '#AAA', fontFamily: 'Inter_400Regular', fontSize: 13, marginBottom: 16, textAlign: 'center' },
 });

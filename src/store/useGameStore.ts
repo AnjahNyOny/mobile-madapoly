@@ -23,6 +23,11 @@ interface GameActions {
   clearEvent: () => void;
   handleBankruptcy: (bankruptPlayerId: string, creditorId: string | null) => void;
   
+  // ── Jail Actions ──
+  payBail: () => void;
+  useJailCard: () => void;
+  rollForJailBreak: () => void;
+  
   // ── Network Integration ──
   setNetworkRole: (role: 'local' | 'host' | 'client', clientId?: string | null) => void;
   setLocalPlayerId: (id: string) => void;
@@ -397,12 +402,12 @@ export const useGameStore = create<GameStoreState & GameActions>((set, get) => (
   },
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // endTurn — Saute les joueurs en faillite
+  // endTurn — Saute les joueurs en faillite, détecte la prison
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   endTurn: () => {
     const { players, currentPlayerIndex, turnPhase, networkRole } = get();
     if (players.length === 0) return;
-    if (turnPhase === 'GAME_OVER') return; // Ne rien faire si la partie est terminée
+    if (turnPhase === 'GAME_OVER') return;
 
     if (networkRole === 'client') {
       NetworkManager.sendMessage({ type: 'REQUEST_END_TURN' });
@@ -418,15 +423,190 @@ export const useGameStore = create<GameStoreState & GameActions>((set, get) => (
       attempts++;
     }
 
-    // Si tous les joueurs sauf un sont en faillite, la boucle ne devrait pas arriver ici
-    // car handleBankruptcy aurait déjà set GAME_OVER
-    set({ 
-      currentPlayerIndex: nextIndex, 
-      turnPhase: 'WAITING_FOR_DICE', 
-      actionDeadline: null,
-      lastEvent: null,
+    const nextPlayer = players[nextIndex];
+
+    // Si le prochain joueur est en prison → phase IN_JAIL_DECISION
+    if (nextPlayer.inJail) {
+      set({
+        currentPlayerIndex: nextIndex,
+        turnPhase: 'IN_JAIL_DECISION',
+        actionDeadline: null,
+        lastEvent: { type: 'jail', message: `${nextPlayer.name} est en prison (Tour ${nextPlayer.jailTurns + 1}/3)`, emoji: '⛓️' },
+      });
+    } else {
+      set({ 
+        currentPlayerIndex: nextIndex, 
+        turnPhase: 'WAITING_FOR_DICE', 
+        actionDeadline: null,
+        lastEvent: null,
+      });
+    }
+    broadcastIfHost(get);
+  },
+
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // Jail Actions — Les 3 options pour sortir de prison
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  /**
+   * payBail — Payer 50 AR pour sortir immédiatement.
+   * Le joueur sort de prison et lance les dés normalement.
+   */
+  payBail: () => {
+    const { turnPhase, players, currentPlayerIndex, networkRole } = get();
+    if (turnPhase !== 'IN_JAIL_DECISION') return;
+
+    if (networkRole === 'client') {
+      NetworkManager.sendMessage({ type: 'REQUEST_PAY_BAIL' });
+      return;
+    }
+
+    const newPlayers = [...players];
+    const player = { ...newPlayers[currentPlayerIndex] };
+
+    if (player.balance < 50) {
+      // Pas assez d'argent — reste en prison
+      set({
+        lastEvent: { type: 'jail', message: `${player.name} n'a pas 50 AR pour la caution !`, emoji: '💸' },
+      });
+      broadcastIfHost(get);
+      return;
+    }
+
+    player.balance -= 50;
+    player.inJail = false;
+    player.jailTurns = 0;
+    newPlayers[currentPlayerIndex] = player;
+
+    set({
+      players: newPlayers,
+      turnPhase: 'WAITING_FOR_DICE',
+      lastEvent: { type: 'jail', message: `${player.name} paie 50 AR de caution et sort de prison !`, emoji: '🔓' },
     });
     broadcastIfHost(get);
+  },
+
+  /**
+   * useJailCard — Utiliser la carte "Sortir de prison".
+   */
+  useJailCard: () => {
+    const { turnPhase, players, currentPlayerIndex, networkRole } = get();
+    if (turnPhase !== 'IN_JAIL_DECISION') return;
+
+    if (networkRole === 'client') {
+      NetworkManager.sendMessage({ type: 'REQUEST_USE_JAIL_CARD' });
+      return;
+    }
+
+    const newPlayers = [...players];
+    const player = { ...newPlayers[currentPlayerIndex] };
+
+    if (!player.hasGetOutOfJailCard) return;
+
+    player.hasGetOutOfJailCard = false;
+    player.inJail = false;
+    player.jailTurns = 0;
+    newPlayers[currentPlayerIndex] = player;
+
+    set({
+      players: newPlayers,
+      turnPhase: 'WAITING_FOR_DICE',
+      lastEvent: { type: 'jail', message: `${player.name} utilise sa carte et sort de prison !`, emoji: '🃏' },
+    });
+    broadcastIfHost(get);
+  },
+
+  /**
+   * rollForJailBreak — Tenter un double pour s'évader.
+   * Double = sortie libre + déplacement.
+   * Pas de double = reste en prison, jailTurns++.
+   * 3e tentative échouée = sortie forcée avec 50 AR.
+   */
+  rollForJailBreak: () => {
+    const { turnPhase, players, currentPlayerIndex, networkRole } = get();
+    if (turnPhase !== 'IN_JAIL_DECISION') return;
+
+    if (networkRole === 'client') {
+      NetworkManager.sendMessage({ type: 'REQUEST_ROLL_JAIL' });
+      return;
+    }
+
+    const die1 = Math.floor(Math.random() * 6) + 1;
+    const die2 = Math.floor(Math.random() * 6) + 1;
+    const isDouble = die1 === die2;
+
+    const newPlayers = [...players];
+    const player = { ...newPlayers[currentPlayerIndex] };
+
+    if (isDouble) {
+      // ── ÉVASION RÉUSSIE ──
+      player.inJail = false;
+      player.jailTurns = 0;
+      const newPosition = (player.position + die1 + die2) % 40;
+
+      // Passage par Départ
+      let event: GameEvent = { type: 'jail', message: `${player.name} fait un double ${die1}+${die2} et s'évade !`, emoji: '🔓' };
+      if (newPosition < player.position) {
+        player.balance += 200;
+        event = { type: 'go-bonus', message: `${player.name} s'évade et passe par Départ ! +200 AR`, emoji: '🏁' };
+      }
+
+      player.position = newPosition;
+      newPlayers[currentPlayerIndex] = player;
+
+      set({
+        lastDiceRoll: [die1, die2],
+        consecutiveDoubles: 0,
+        players: newPlayers,
+        turnPhase: 'ANIMATING_MOVEMENT',
+        lastEvent: event,
+      });
+      broadcastIfHost(get);
+    } else {
+      // ── ÉVASION ÉCHOUÉE ──
+      player.jailTurns += 1;
+
+      if (player.jailTurns >= 3) {
+        // 3e tentative — sortie forcée avec paiement
+        player.balance -= 50;
+        player.inJail = false;
+        player.jailTurns = 0;
+        const newPosition = (player.position + die1 + die2) % 40;
+
+        let event: GameEvent = { type: 'jail', message: `${player.name} échoue 3 fois — sortie forcée ! -50 AR`, emoji: '💸' };
+        if (newPosition < player.position) {
+          player.balance += 200;
+        }
+
+        player.position = newPosition;
+        newPlayers[currentPlayerIndex] = player;
+
+        set({
+          lastDiceRoll: [die1, die2],
+          consecutiveDoubles: 0,
+          players: newPlayers,
+          turnPhase: 'ANIMATING_MOVEMENT',
+          lastEvent: event,
+        });
+
+        // Vérifier la faillite après le paiement forcé
+        if (player.balance < 0) {
+          get().handleBankruptcy(player.id, null);
+        } else {
+          broadcastIfHost(get);
+        }
+      } else {
+        // Reste en prison — tour consommé
+        newPlayers[currentPlayerIndex] = player;
+        set({
+          lastDiceRoll: [die1, die2],
+          players: newPlayers,
+          turnPhase: 'END_OF_TURN',
+          lastEvent: { type: 'jail', message: `${player.name} fait ${die1}+${die2}… pas de double. Reste en prison.`, emoji: '🔒' },
+        });
+        broadcastIfHost(get);
+      }
+    }
   },
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -508,5 +688,6 @@ export const useGameStore = create<GameStoreState & GameActions>((set, get) => (
     
     if (turnPhase === 'WAITING_FOR_DICE') get().rollDice();
     else if (turnPhase === 'WAITING_FOR_DECISION') get().skipPurchase();
+    else if (turnPhase === 'IN_JAIL_DECISION') get().rollForJailBreak();
   },
 }));

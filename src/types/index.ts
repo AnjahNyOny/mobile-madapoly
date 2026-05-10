@@ -1,6 +1,7 @@
 // Les phases strictement contrôlées du moteur de jeu
 export type TurnPhase = 
   | 'WAITING_FOR_DICE'     // Attente de l'action de lancer les dés
+  | 'IN_JAIL_DECISION'     // Le joueur est en prison — choix : payer, carte, ou tenter un double
   | 'ANIMATING_MOVEMENT'   // Pion en mouvement (UI prend le relais)
   | 'RESOLVING_SPACE'      // Calcul de la case d'arrivée
   | 'WAITING_FOR_DECISION' // Attente du choix d'achat (Modale UI)

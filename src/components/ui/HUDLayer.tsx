@@ -7,6 +7,7 @@ import { DiceDisplay } from './DiceDisplay';
 import { PropertyModal } from './PropertyModal';
 import { EventToast } from './EventToast';
 import { DisconnectModal } from './DisconnectModal';
+import { JailPanel } from './JailPanel';
 
 /**
  * HUDLayer is an absolute overlay on top of the entire GameScreen.
@@ -32,6 +33,9 @@ export const HUDLayer = () => {
   const canRoll = turnPhase === 'WAITING_FOR_DICE' && isLocalPlayerTurn;
   const isGameOver = turnPhase === 'GAME_OVER';
   const isBotDecision = turnPhase === 'WAITING_FOR_DECISION' && currentPlayer?.isBot;
+  const isJailDecision = turnPhase === 'IN_JAIL_DECISION';
+  const isLocalJailDecision = isJailDecision && isLocalPlayerTurn;
+  const isBotJailDecision = isJailDecision && currentPlayer?.isBot;
 
   // Find the winner for GAME_OVER display
   const winner = isGameOver ? players.find(p => !p.isBankrupt) : null;
@@ -89,19 +93,30 @@ export const HUDLayer = () => {
           )}
 
           {/* Phase indicator (for non-interactive phases only) */}
-          {!canRoll && !isGameOver && turnPhase !== 'END_OF_TURN' && turnPhase !== 'WAITING_FOR_DECISION' && (
+          {!canRoll && !isGameOver && !isJailDecision && turnPhase !== 'END_OF_TURN' && turnPhase !== 'WAITING_FOR_DECISION' && (
             <View style={styles.phaseIndicator}>
               <Text style={styles.phaseText}>
                 {turnPhase === 'ANIMATING_MOVEMENT' && '⏳ Déplacement...'}
                 {turnPhase === 'RESOLVING_SPACE' && '🔍 Résolution...'}
+                {turnPhase === 'WAITING_FOR_DICE' && !isLocalPlayerTurn && `⏳ ${currentPlayer?.name || 'Joueur'} réfléchit...`}
               </Text>
             </View>
           )}
 
           {/* Bot thinking indicator */}
-          {isBotDecision && (
+          {(isBotDecision || isBotJailDecision) && (
             <View style={styles.phaseIndicator}>
               <Text style={styles.phaseText}>🤖 Le bot réfléchit...</Text>
+            </View>
+          )}
+
+          {/* Jail panel for local human player */}
+          {isLocalJailDecision && <JailPanel />}
+
+          {/* Waiting for opponent's jail decision */}
+          {isJailDecision && !isLocalPlayerTurn && !currentPlayer?.isBot && (
+            <View style={styles.phaseIndicator}>
+              <Text style={styles.phaseText}>⛓️ {currentPlayer?.name} est en prison...</Text>
             </View>
           )}
         </View>

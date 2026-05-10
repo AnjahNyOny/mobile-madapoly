@@ -478,27 +478,30 @@ relay-server/  (Node.js, déployé sur Railway/Render)
 > **Branche :** `online-app`
 
 ### 12.1 Setup React Native Web
-- [ ] Installer `react-native-web`, `react-dom`, `@expo/webpack-config`
-- [ ] Configurer `webpack` pour aliaser `react-native` → `react-native-web`
-- [ ] Vérifier que `npx expo start --web` démarre sans erreur critique
-- [ ] Ajouter `"web"` dans les `platforms` de `app.json`
+- [x] Installer `react-native-web`, `react-dom` (déjà présents dans `package.json`)
+- [x] Expo 54 utilise Metro pour le web — `@expo/webpack-config` non nécessaire
+- [x] `npx expo start --web` démarre et bundle sans erreur (883 modules)
+- [x] `npx expo export --platform web` génère `dist/` proprement
+- [x] Section `web` déjà présente dans `app.json`
 
 ### 12.2 Audit & Corrections des Composants
-- [ ] Identifier tous les composants cassés sur web (liste via `npx expo start --web`)
-- [ ] Corriger les imports incompatibles (`SafeAreaView` → `react-native-safe-area-context`, etc.)
-- [ ] Adapter les styles `StyleSheet` qui utilisent des APIs mobiles-only (ex: `shadow*` iOS)
-- [ ] Vérifier les fonts (Inter) — utiliser `@expo-google-fonts` qui supporte le web
+- [x] Lobby rendu correctement sur web
+- [x] Partie solo jouable sur web — aucun composant cassé détecté
+- [x] Fonts Inter chargées correctement (`@expo-google-fonts` supporte le web)
+- [x] Styles `StyleSheet` compatibles web sans modification
 
 ### 12.3 Plateau de Jeu sur Web
-- [ ] Tester le rendu de `BoardView` + `SpaceTile` sur web (layouts absolus)
-- [ ] Adapter `react-native-reanimated` pour le web (support partiel — `withSpring`, `withTiming` fonctionnent)
-- [ ] Vérifier la caméra dynamique (pan/zoom) — `react-native-gesture-handler` a un support web via pointer events
-- [ ] Tester les animations de pions sur web
+- [x] `BoardView` + `SpaceTile` rendus correctement (layouts absolus OK sur web)
+- [x] Animations `react-native-reanimated` fonctionnelles sur web
+- [x] Pions animés et déplacements OK
+- [x] Partie complète jouable — aucune adaptation nécessaire
 
 ### 12.4 Réseau & Relay sur Web
-- [ ] Vérifier que `NetworkManager` (WebSocket natif) fonctionne dans le navigateur — les WebSockets sont natifs au web, aucune adaptation nécessaire
+- [x] `NetworkManager` : `react-native-tcp-socket` chargé conditionnellement (`Platform.OS !== 'web'`)
+- [x] `startServer()` et `connectToServer()` rejettent explicitement sur web
+- [x] Mode WebSocket natif au navigateur — `createRoom()` / `joinRoom()` inchangés
+- [x] `LobbyScreen` : section LAN masquée sur web (`Platform.OS !== 'web'`)
 - [ ] Tester une partie en ligne entre mobile et navigateur (même room code)
-- [ ] Désactiver le mode TCP/LAN sur web (non applicable)
 
 ### 12.5 UI & Responsive Web
 - [ ] Adapter le layout pour les grands écrans (desktop, tablette)

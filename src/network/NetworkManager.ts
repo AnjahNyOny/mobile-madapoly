@@ -1,5 +1,9 @@
-import TcpSocket from 'react-native-tcp-socket';
+import { Platform } from 'react-native';
 import * as Network from 'expo-network';
+// react-native-tcp-socket contains native code — not available on web.
+// Load it conditionally so the web bundle doesn't crash.
+const TcpSocket: any =
+  Platform.OS !== 'web' ? require('react-native-tcp-socket') : null;
 
 // ── Transport mode ────────────────────────────────────────────────────────────
 export type TransportMode = 'tcp' | 'websocket';
@@ -13,12 +17,12 @@ export interface NetworkPacket {
 }
 
 // ── TCP Internal State ────────────────────────────────────────────────────────
-let server: TcpSocket.Server | null = null;
-const connectedClients: Map<string, TcpSocket.Socket> = new Map();
-let clientSocket: TcpSocket.Socket | null = null;
+let server: any = null;
+const connectedClients: Map<string, any> = new Map();
+let clientSocket: any = null;
 
 // Helper to write large messages in chunks to prevent Android socket crashes
-const safeSocketWrite = (socket: TcpSocket.Socket, message: string) => {
+const safeSocketWrite = (socket: any, message: string) => {
   const CHUNK_SIZE = 8192;
   let offset = 0;
   const writeChunk = () => {
@@ -102,6 +106,10 @@ export const NetworkManager = {
 
   startServer(port: number = 3000): Promise<string> {
     return new Promise(async (resolve, reject) => {
+      if (Platform.OS === 'web') {
+        reject(new Error('TCP server not available on web'));
+        return;
+      }
       if (server) {
         server.close();
       }
@@ -112,7 +120,7 @@ export const NetworkManager = {
         return;
       }
 
-      server = TcpSocket.createServer((socket) => {
+      server = TcpSocket!.createServer((socket) => {
         socket.setEncoding('utf8');
         const clientId = `${socket.remoteAddress}:${socket.remotePort}`;
         console.log(`[Host/TCP] Client connected: ${clientId}`);
@@ -219,6 +227,10 @@ export const NetworkManager = {
 
   connectToServer(ip: string, port: number = 3000): Promise<void> {
     return new Promise((resolve, reject) => {
+      if (Platform.OS === 'web') {
+        reject(new Error('TCP not available on web — use online mode'));
+        return;
+      }
       if (clientSocket) {
         clientSocket.destroy();
       }
@@ -235,7 +247,7 @@ export const NetworkManager = {
 
       console.log(`[Client/TCP] Connecting to ${ip}:${port}...`);
 
-      clientSocket = TcpSocket.createConnection({ port, host: ip }, () => {
+      clientSocket = TcpSocket!.createConnection({ port, host: ip }, () => {
         console.log(`[Client/TCP] Connected to ${ip}:${port}`);
         if (clientSocket) clientSocket.setEncoding('utf8');
         NetworkManager._startClientHeartbeat();

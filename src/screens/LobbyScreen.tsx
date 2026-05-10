@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { StyleSheet, View, Text, TouchableOpacity, TextInput, SafeAreaView, ActivityIndicator, Clipboard, ScrollView } from 'react-native';
+import { StyleSheet, View, Text, TouchableOpacity, TextInput, SafeAreaView, ActivityIndicator, Clipboard, ScrollView, Platform } from 'react-native';
 import { COLORS, SPACING, BORDER_RADIUS } from '../styles/theme';
 import { NetworkManager } from '../network/NetworkManager';
 import { useGameStore } from '../store/useGameStore';
@@ -343,26 +343,30 @@ export const LobbyScreen = () => {
               <Text style={styles.buttonText}>Lancer la partie Solo</Text>
             </TouchableOpacity>
 
-            <View style={styles.divider} />
-            <Text style={styles.sectionTitle}>📶  Partie Locale (Wi-Fi)</Text>
+            {Platform.OS !== 'web' && (
+              <>
+                <View style={styles.divider} />
+                <Text style={styles.sectionTitle}>📶  Partie Locale (Wi-Fi)</Text>
 
-            <TouchableOpacity style={styles.button} onPress={handleHost}>
-              <Text style={styles.buttonText}>Héberger (LAN)</Text>
-            </TouchableOpacity>
+                <TouchableOpacity style={styles.button} onPress={handleHost}>
+                  <Text style={styles.buttonText}>Héberger (LAN)</Text>
+                </TouchableOpacity>
 
-            <TextInput
-              style={styles.input}
-              placeholder="Ex: 192.168.1.15"
-              placeholderTextColor="#999"
-              value={clientInputIp}
-              onChangeText={setClientInputIp}
-              keyboardType="numbers-and-punctuation"
-              autoCapitalize="none"
-              autoCorrect={false}
-            />
-            <TouchableOpacity style={[styles.button, styles.buttonSecondary]} onPress={handleJoin} disabled={isConnecting}>
-              {isConnecting ? <ActivityIndicator color="#FFF" /> : <Text style={styles.buttonText}>Rejoindre (LAN)</Text>}
-            </TouchableOpacity>
+                <TextInput
+                  style={styles.input}
+                  placeholder="Ex: 192.168.1.15"
+                  placeholderTextColor="#999"
+                  value={clientInputIp}
+                  onChangeText={setClientInputIp}
+                  keyboardType="numbers-and-punctuation"
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                />
+                <TouchableOpacity style={[styles.button, styles.buttonSecondary]} onPress={handleJoin} disabled={isConnecting}>
+                  {isConnecting ? <ActivityIndicator color="#FFF" /> : <Text style={styles.buttonText}>Rejoindre (LAN)</Text>}
+                </TouchableOpacity>
+              </>
+            )}
 
             <View style={styles.divider} />
             <Text style={styles.sectionTitle}>🌐  Jouer en Ligne</Text>

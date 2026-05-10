@@ -446,11 +446,11 @@ relay-server/  (Node.js, déployé sur Railway/Render)
   ```
 - [x] Créer `relay-server/package.json` avec script `start` et dépendance `ws`.
 - [x] Créer `relay-server/server.js` (logique relay ~200 lignes).
-- [ ] Tester en local : lancer le relay sur le Mac, deux téléphones sur le même Wi-Fi mais en mode "En ligne" → valider que le jeu fonctionne via le relay local avant de déployer.
-- [ ] Déployer sur Railway :
-  - `railway init` dans `relay-server/`
-  - `railway up`
-  - Récupérer l'URL publique → mettre à jour `RELAY_URL` dans `config.ts`.
+- [x] Tester en local : validé sur Wi-Fi local via `ws://10.0.0.169:8080`.
+- [x] Déployer sur Render :
+  - Root directory : `relay-server/`, Start command : `node server.js`
+  - URL publique : `wss://mobile-madapoly.onrender.com`
+  - `RELAY_URL` mis à jour dans `config.ts`.
 - [ ] Tester avec deux téléphones sur des réseaux différents (4G vs Wi-Fi).
 - [ ] Documenter le `RELAY_URL` de production dans `CONTEXT.md`.
 

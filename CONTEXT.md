@@ -114,4 +114,5 @@ Voici la configuration matérielle et réseau utilisée pour valider le code :
     * **Rôle réseau :** L'émulateur agit comme **Client**. Il se connecte à l'IP locale exposée par l'iPhone. (Note : L'inverse n'est pas possible à cause de l'isolation réseau de l'émulateur Android).
 * **Déploiement à chaud :** Une fois les applications natives installées sur les deux appareils, le serveur Metro (`npx expo start --dev-client`) est utilisé pour injecter le bundle JavaScript via le Wi-Fi.
 * 
-* pour tester : lancer relay (`npm start`) et ensuite lancer app sur les deux appareils : (`npx expo start --dev-client`)
+* pour tester en local : lancer relay (`npm start`) et ensuite lancer app sur les deux appareils : (`npx expo start --dev-client`)
+* **Relay de production (Render) :** `wss://mobile-madapoly.onrender.com` — utilisé automatiquement en mode release (`__DEV__ === false`). ⚠️ Le service Render gratuit dort après 15 min d'inactivité : la première connexion peut prendre ~30s.

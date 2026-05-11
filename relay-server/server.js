@@ -186,41 +186,69 @@ function scheduleRoomCleanup(roomCode) {
   roomTimers.set(roomCode, timer);
 }
 
-// ── HTTP Server (for GET /rooms) ─────────────────────────────────────────────
+// Store recent logs for debugging (last 100 entries)
+const recentLogs = [];
+const originalConsoleLog = console.log;
+const originalConsoleWarn = console.warn;
+const originalConsoleError = console.error;
 
-const httpServer = http.createServer((req, res) => {
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+console.log = (...args) => {
+  const msg = args.join(' ');
+  recentLogs.push({ type: 'log', timestamp: Date.now(), message: msg });
+  if (recentLogs.length > 100) recentLogs.shift();
+  originalConsoleLog(...args);
+};
 
-  if (req.method === 'OPTIONS') {
-    res.writeHead(204);
-    res.end();
+console.warn = (...args) => {
+  const msg = args.join(' ');
+  recentLogs.push({ type: 'warn', timestamp: Date.now(), message: msg });
+  if (recentLogs.length > 100) recentLogs.shift();
+  originalConsoleWarn(...args);
+};
+
+console.error = (...args) => {
+  const msg = args.join(' ');
+  recentLogs.push({ type: 'error', timestamp: Date.now(), message: msg });
+  if (recentLogs.length > 100) recentLogs.shift();
+  originalConsoleError(...args);
+};
+
+// ── HTTP server for health checks and room listing ──
+const server = http.createServer((req, res) => {
+  if (req.method === 'GET' && req.url === '/health') {
+    res.writeHead(200, { 'Content-Type': 'text/plain' });
+    res.end('OK');
     return;
   }
 
   if (req.method === 'GET' && req.url === '/rooms') {
-    const list = [];
-    rooms.forEach((players, roomCode) => {
-      if (players.size > 0) {
-        list.push({
-          roomCode,
-          roomName: roomNames.get(roomCode) || null,
-          status: roomStatus.get(roomCode) || 'lobby',
-          playerCount: players.size,
-          spectatorCount: (roomSpectators.get(roomCode) || new Set()).size,
-          createdAt: roomCreatedAt.get(roomCode) || 0,
-        });
-      }
-    });
-    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+    const list = Array.from(roomStatus.entries()).map(([code, status]) => ({
+      roomCode: code,
+      roomName: roomNames.get(code) || null,
+      status,
+      playerCount: rooms.get(code)?.size || 0,
+      spectatorCount: roomSpectators.get(code)?.size || 0,
+      createdAt: roomCreatedAt.get(code) || Date.now()
+    }));
     res.end(JSON.stringify(list));
     return;
   }
 
-  if (req.method === 'GET' && req.url === '/health') {
-    res.writeHead(200);
-    res.end('OK');
+  if (req.method === 'GET' && req.url === '/logs') {
+    res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+    res.end(JSON.stringify(recentLogs));
+    return;
+  }
+
+  // CORS preflight
+  if (req.method === 'OPTIONS') {
+    res.writeHead(200, {
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'GET, OPTIONS',
+      'Access-Control-Allow-Headers': 'Content-Type'
+    });
+    res.end();
     return;
   }
 

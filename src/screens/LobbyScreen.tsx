@@ -86,6 +86,8 @@ export const LobbyScreen = () => {
   const [onlineRoomName, setOnlineRoomName] = useState<string>('');
   const [pendingRequests, setPendingRequests] = useState<{ socketId: string; playerName: string; playerAvatar: string }[]>([]);
   const [savedSession, setSavedSession] = useState<import('../utils/sessionStorage').SavedSession | null>(null);
+  // Map playerId → timer for grace-period bankruptcy
+  const bankruptcyTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
   
   const setNetworkRole = useGameStore(s => s.setNetworkRole);
   const setLocalPlayerId = useGameStore(s => s.setLocalPlayerId);
@@ -208,10 +210,15 @@ export const LobbyScreen = () => {
 
       if (clientId !== 'host' && clientId !== 'host_left' && client) {
         if (storeState.appScreen === 'game' && storeState.networkRole === 'host') {
-          console.log(`[Lobby] Triggering bankruptcy for player ${client.playerId}`);
-          setTimeout(() => {
-            useGameStore.getState().handleBankruptcy(client.playerId, null);
-          }, 0);
+          console.log(`[Lobby] Client ${client.playerId} disconnected — 20s grace period before bankruptcy`);
+          // Give the client 20s to rejoin before declaring bankruptcy
+          const playerId = client.playerId;
+          const timer = setTimeout(() => {
+            bankruptcyTimers.current.delete(playerId);
+            console.log(`[Lobby] Grace period expired — triggering bankruptcy for ${playerId}`);
+            useGameStore.getState().handleBankruptcy(playerId, null);
+          }, 20_000);
+          bankruptcyTimers.current.set(playerId, timer);
         }
       }
 
@@ -327,6 +334,18 @@ export const LobbyScreen = () => {
 
     // Host: when a client reconnects, re-send the full state targeted to their new socket
     NetworkManager.onPlayerRejoined((newSocketId, localPlayerId) => {
+      // Cancel any pending bankruptcy timer for this player
+      const timer = bankruptcyTimers.current.get(localPlayerId);
+      if (timer) {
+        clearTimeout(timer);
+        bankruptcyTimers.current.delete(localPlayerId);
+        console.log(`[Lobby] Bankruptcy timer cancelled — ${localPlayerId} rejoined`);
+      }
+      // Update socketId in connectedClients to new socket
+      setConnectedClients(prev => prev.map(c =>
+        c.playerId === localPlayerId ? { ...c, socketId: newSocketId } : c
+      ));
+
       const state = useGameStore.getState();
       const { players, board, currentPlayerIndex, turnPhase, consecutiveDoubles, lastDiceRoll, actionDeadline, lastEvent, winCondition, chronoEndTime } = state;
       NetworkManager.sendTo(newSocketId, {

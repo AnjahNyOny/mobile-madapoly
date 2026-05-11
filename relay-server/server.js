@@ -11,6 +11,7 @@
  *   anything else                      → forwarded raw to all other members of the room
  *
  * Deploy: Railway / Render (set PORT env var automatically).
+ * Force redeploy - latest commit with rejoin fixes
  */
 
 const http = require('http');

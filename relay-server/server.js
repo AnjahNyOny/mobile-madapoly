@@ -125,17 +125,24 @@ function deleteRoom(roomCode, reason) {
 function checkRoomCleanup(roomCode) {
   const room = rooms.get(roomCode);
   const host = roomHosts.get(roomCode);
+  const playerIds = roomPlayerIds.get(roomCode);
   
-  // If no host and no players, delete the room immediately
+  // If no host and no players, but we have registered playerIds, keep for reconnection
   if (!host && (!room || room.size === 0)) {
-    deleteRoom(roomCode, 'empty_no_host');
-    return true;
+    if (!playerIds || playerIds.size === 0) {
+      // Only delete if no registered playerIds (no one can reconnect)
+      deleteRoom(roomCode, 'empty_no_host');
+      return true;
+    }
+    // Keep room for potential reconnection
+    console.log(`[Relay] Room ${roomCode} empty but keeping for ${playerIds.size} registered players`);
+    return false;
   }
   
-  // If only host exists and no players for more than 2 minutes, delete
+  // If only host exists and no players for more than 10 minutes, delete (increased from 2 minutes)
   if (host && room && room.size === 0) {
     const createdAt = roomCreatedAt.get(roomCode);
-    if (createdAt && Date.now() - createdAt > 120000) { // 2 minutes
+    if (createdAt && Date.now() - createdAt > 600000) { // 10 minutes
       deleteRoom(roomCode, 'host_only_timeout');
       return true;
     }

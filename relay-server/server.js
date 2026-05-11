@@ -215,7 +215,7 @@ console.error = (...args) => {
 };
 
 // ── HTTP server for health checks and room listing ──
-const server = http.createServer((req, res) => {
+const httpServer = http.createServer((req, res) => {
   if (req.method === 'GET' && req.url === '/health') {
     res.writeHead(200, { 'Content-Type': 'text/plain' });
     res.end('OK');

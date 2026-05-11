@@ -33,11 +33,12 @@ export const HUDLayer = () => {
   const lastDiceRoll = useGameStore((s) => s.lastDiceRoll);
   const rollDice = useGameStore((s) => s.rollDice);
   const localPlayerId = useGameStore(s => s.localPlayerId);
+  const networkRole = useGameStore(s => s.networkRole);
+  const connectedClients = useGameStore(s => s.connectedClients);
   const setIsGameLogOpen = useGameStore(s => s.setIsGameLogOpen);
   const chronoEndTime = useGameStore(s => s.chronoEndTime);
   const checkChronoExpired = useGameStore(s => s.checkChronoExpired);
   const turnTimeRemaining = useGameStore(s => s.turnTimeRemaining);
-console.log(`[HUD] turnTimeRemaining:`, turnTimeRemaining);
   const [isTradeModalOpen, setIsTradeModalOpen] = React.useState(false);
   const [chronoDisplay, setChronoDisplay] = useState<string | null>(null);
 
@@ -60,7 +61,14 @@ console.log(`[HUD] turnTimeRemaining:`, turnTimeRemaining);
   }, [chronoEndTime]);
 
   const currentPlayer = players[currentPlayerIndex];
-  const isLocalPlayerTurn = currentPlayer?.id === localPlayerId;
+  // Determine if current player is controlled by a remote client (not the host)
+  const isRemoteClientPlayer = connectedClients.some(c => c.playerId === currentPlayer?.id);
+  // Host/local: controls non-bot players that are NOT remote clients
+  // Client: controls only their own assigned player
+  const isHostOrLocal = networkRole === 'host' || networkRole === 'local';
+  const isLocalPlayerTurn = isHostOrLocal
+    ? !currentPlayer?.isBot && !isRemoteClientPlayer
+    : currentPlayer?.id === localPlayerId;
   const canRoll = turnPhase === 'WAITING_FOR_DICE' && isLocalPlayerTurn;
   const isGameOver = turnPhase === 'GAME_OVER';
   const isBotDecision = turnPhase === 'WAITING_FOR_DECISION' && currentPlayer?.isBot;
@@ -131,7 +139,7 @@ console.log(`[HUD] turnTimeRemaining:`, turnTimeRemaining);
         </View>
 
         {/* ─── BOTTOM: Dice & Controls ─── */}
-        <View style={styles.bottomBar} pointerEvents="box-none">
+        <View style={styles.bottomBar}>
           {/* Dice result display */}
           {!isGameOver && (
             <View style={styles.diceContainer}>
@@ -141,10 +149,10 @@ console.log(`[HUD] turnTimeRemaining:`, turnTimeRemaining);
 
           {/* Roll button — only visible when it's time to roll */}
           {canRoll && !isGameOver && (
-            <View style={styles.actionRow}>
+            <View style={styles.actionRow} pointerEvents="auto">
               <TouchableOpacity
                 style={styles.rollButton}
-                onPress={rollDice}
+                onPress={() => rollDice(true)}
                 activeOpacity={0.8}
               >
                 <Text style={styles.rollButtonIcon}>🎲</Text>
@@ -189,7 +197,7 @@ console.log(`[HUD] turnTimeRemaining:`, turnTimeRemaining);
             </View>
           )}
           {/* ─── Bottom-left: Log ─── */}
-          <View style={styles.bottomLeftBar} pointerEvents="box-none">
+          <View style={styles.bottomLeftBar}>
             <TouchableOpacity
               style={styles.iconBtn}
               onPress={() => setIsGameLogOpen(true)}
@@ -199,7 +207,7 @@ console.log(`[HUD] turnTimeRemaining:`, turnTimeRemaining);
             </TouchableOpacity>
           </View>
           {/* ─── Bottom-right: Forfeit ─── */}
-          <View style={styles.bottomRightBar} pointerEvents="box-none">
+          <View style={styles.bottomRightBar}>
             <ForfeitButton />
           </View>
         </View>

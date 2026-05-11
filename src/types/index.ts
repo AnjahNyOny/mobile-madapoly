@@ -19,6 +19,7 @@ export interface Player {
   jailTurns: number;
   hasGetOutOfJailCard: boolean;
   isBankrupt: boolean;    // Le joueur a fait faillite
+  consecutiveTimeouts: number; // Nombre de timeouts consécutifs
 }
 
 export interface PropertyState {

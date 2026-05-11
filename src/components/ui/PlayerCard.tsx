@@ -72,7 +72,8 @@ interface PlayerCardProps {
 export const PlayerCard = React.memo(({ player, isActive }: PlayerCardProps) => {
   const isBankrupt = player.isBankrupt;
   const setSelectedPlayerIdForProps = useGameStore(s => s.setSelectedPlayerIdForProps);
-
+  
+  
   return (
     <TouchableOpacity 
       activeOpacity={0.8}
@@ -109,6 +110,9 @@ export const PlayerCard = React.memo(({ player, isActive }: PlayerCardProps) => 
           </Text>
           {player.inJail && !isBankrupt && (
             <Text style={styles.jailIcon}>🔒</Text>
+          )}
+          {player.consecutiveTimeouts > 0 && !isBankrupt && (
+            <Text style={styles.timeoutIcon}>⏰{player.consecutiveTimeouts}</Text>
           )}
         </View>
         <Text style={[
@@ -197,6 +201,10 @@ const styles = StyleSheet.create({
   },
   jailIcon: {
     fontSize: 10,
+  },
+  timeoutIcon: {
+    fontSize: 10,
+    color: '#ff9500', // Orange pour indiquer l'avertissement
   },
   balance: {
     color: COLORS.textSecondary,

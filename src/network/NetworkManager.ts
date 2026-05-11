@@ -543,6 +543,13 @@ export const NetworkManager = {
           console.log(`[Client/WS] Join accepted for room ${wsRoomCode} as ${wsLocalSocketId}`);
           resolve();
           wsSocket!.onmessage = NetworkManager._wsClientMessageHandler;
+          wsSocket!.onclose = () => {
+            console.log('[Client/WS] Connection closed after join (network drop)');
+            NetworkManager._stopClientHeartbeat();
+            wsSocket = null;
+            wsRoomCode = null;
+            if (onDisconnectCallback) onDisconnectCallback('host');
+          };
           return;
         }
 
@@ -614,14 +621,25 @@ export const NetworkManager = {
       return;
     }
 
-    if (packet.type === 'HOST_LEFT' || packet.type === 'ROOM_DISSOLVED') {
-      console.warn(`[Client/WS] ${packet.type} — host disconnected or room dissolved`);
+    if (packet.type === 'ROOM_DISSOLVED') {
+      console.warn(`[Client/WS] ROOM_DISSOLVED — room is gone`);
       NetworkManager._stopClientHeartbeat();
-      // Null out onclose before closing to avoid double-firing
       if (wsSocket) { wsSocket.onclose = null; wsSocket.close(1000); wsSocket = null; }
       wsRoomCode = null;
-      // Use a distinct callback value so the UI can offer "continue with bot"
       if (onDisconnectCallback) onDisconnectCallback('host_left');
+      return;
+    }
+
+    if (packet.type === 'HOST_LEFT') {
+      console.warn(`[Client/WS] HOST_LEFT — host disconnected, keeping connection open for possible rejoin`);
+      // Do NOT close WebSocket — host may refresh and reclaim the room
+      if (onDisconnectCallback) onDisconnectCallback('host_left');
+      return;
+    }
+
+    if (packet.type === 'HOST_REJOINED') {
+      console.log(`[Client/WS] HOST_REJOINED — host is back`);
+      if (onMessageCallback) onMessageCallback(packet, 'host');
       return;
     }
 

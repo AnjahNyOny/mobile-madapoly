@@ -8,6 +8,7 @@ export interface SavedSession {
   playerName: string;
   playerAvatar: string;
   savedAt: number;
+  gameStarted?: boolean;
 }
 
 const SESSION_TTL_MS = 30 * 60 * 1000; // 30 min max
@@ -44,4 +45,32 @@ export function clearSession() {
   const store = storage();
   if (!store) return;
   store.removeItem(KEY);
+}
+
+const GAME_STATE_KEY = 'madapoly_game_state';
+
+export function saveGameState(state: object) {
+  const store = storage();
+  if (!store) return;
+  try {
+    store.setItem(GAME_STATE_KEY, JSON.stringify({ ...state, savedAt: Date.now() }));
+  } catch {}
+}
+
+export function loadGameState(): Record<string, any> | null {
+  const store = storage();
+  if (!store) return null;
+  try {
+    const raw = store.getItem(GAME_STATE_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
+
+export function clearGameState() {
+  const store = storage();
+  if (!store) return;
+  store.removeItem(GAME_STATE_KEY);
 }

@@ -20,7 +20,7 @@ const { WebSocketServer, WebSocket } = require('ws');
 const PORT = parseInt(process.env.PORT || '8080', 10);
 const MAX_PLAYERS_PER_ROOM = 4;
 const ROOM_TTL_MS = 5 * 60 * 1000; // 5 min idle before cleanup
-const MAX_PACKETS_PER_SECOND = 20;
+const MAX_PACKETS_PER_SECOND = 60;
 const MAX_MESSAGE_BYTES = 64 * 1024; // 64 KB — STATE_UPDATE is typically < 5 KB
 const MAX_TOTAL_CONNECTIONS = 100;   // Basic DoS guard
 
@@ -308,11 +308,24 @@ const httpServer = http.createServer((req, res) => {
     return;
   }
 
+  // DELETE /rooms/:roomCode — delete a room by code
+  if (req.method === 'DELETE' && req.url.startsWith('/rooms/')) {
+    const roomCode = req.url.split('/rooms/')[1];
+    res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+    if (roomCode && rooms.has(roomCode)) {
+      deleteRoom(roomCode, 'http_delete');
+      res.end(JSON.stringify({ success: true, roomCode }));
+    } else {
+      res.end(JSON.stringify({ success: false, error: 'Room not found' }));
+    }
+    return;
+  }
+
   // CORS preflight
   if (req.method === 'OPTIONS') {
     res.writeHead(200, {
       'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Methods': 'GET, OPTIONS',
+      'Access-Control-Allow-Methods': 'GET, DELETE, OPTIONS',
       'Access-Control-Allow-Headers': 'Content-Type'
     });
     res.end();

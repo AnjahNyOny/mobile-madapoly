@@ -39,24 +39,31 @@ export const GameScreen = () => {
   // ── Network message handler for all game messages ──
   useEffect(() => {
     const handleMessage = (packet: any, clientId?: string) => {
-      console.log(`[GameScreen] Received message type: ${packet.type}`);
-      
       if (packet.type === 'TIMER_UPDATE') {
-        console.log(`[GameScreen] Received TIMER_UPDATE:`, packet.payload.turnTimeRemaining);
-        const state = useGameStore.getState();
-        console.log(`[GameScreen] Before update - turnTimeRemaining:`, state.turnTimeRemaining, 'currentPlayerIndex:', state.currentPlayerIndex);
         useGameStore.getState().setTurnTimeRemaining(packet.payload.turnTimeRemaining);
-        console.log(`[GameScreen] After update - turnTimeRemaining:`, useGameStore.getState().turnTimeRemaining);
+      }
+      
+      // Handle client requests on the host side
+      if (useGameStore.getState().networkRole === 'host') {
+        if (packet.type === 'REQUEST_ROLL_DICE') useGameStore.getState().rollDice();
+        if (packet.type === 'REQUEST_BUY_PROPERTY') useGameStore.getState().buyProperty();
+        if (packet.type === 'REQUEST_SKIP_PURCHASE') useGameStore.getState().skipPurchase();
+        if (packet.type === 'REQUEST_END_TURN') useGameStore.getState().endTurn();
+        if (packet.type === 'REQUEST_PAY_BAIL') useGameStore.getState().payBail();
+        if (packet.type === 'REQUEST_USE_JAIL_CARD') useGameStore.getState().useJailCard();
+        if (packet.type === 'REQUEST_ROLL_JAIL') useGameStore.getState().rollForJailBreak();
+        if (packet.type === 'REQUEST_BUILD_HOUSE') useGameStore.getState().buildHouse(packet.payload.propertyId);
+        if (packet.type === 'REQUEST_SELL_HOUSE') useGameStore.getState().sellHouse(packet.payload.propertyId);
+        if (packet.type === 'REQUEST_MORTGAGE') useGameStore.getState().mortgageProperty(packet.payload.propertyId);
+        if (packet.type === 'REQUEST_UNMORTGAGE') useGameStore.getState().unmortgageProperty(packet.payload.propertyId);
       }
       
       // Also handle other important messages that might be needed during gameplay
       if (packet.type === 'STATE_UPDATE') {
-        console.log(`[GameScreen] Received STATE_UPDATE`);
         useGameStore.getState().syncState(packet.payload);
       }
       
       if (packet.type === 'GAME_START') {
-        console.log(`[GameScreen] Received GAME_START`);
         useGameStore.getState().syncState(packet.payload);
       }
     };

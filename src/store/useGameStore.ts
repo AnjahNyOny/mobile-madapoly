@@ -5,6 +5,7 @@ import { calculateRent, hasMonopoly } from '../utils/rentCalculator';
 import { shuffleArray } from '../utils/mathHelpers';
 import { CHANCE_CARDS, COMMUNITY_CHEST_CARDS, GameCard } from '../constants/cards';
 import { NetworkManager } from '../network/NetworkManager';
+import { saveGameState } from '../utils/sessionStorage';
 
 // ─── Turn timeout system ───
 let turnTimeoutTimer: any = null;
@@ -29,7 +30,7 @@ export interface GameEvent {
 
 interface GameActions {
   initGame: (playersSetup: Pick<Player, 'id' | 'name' | 'isBot' | 'avatar'>[]) => void;
-  rollDice: () => void;
+  rollDice: (isManual?: boolean) => void;
   endAnimation: () => void;
   resolveSpace: () => void;
   buyProperty: () => void;
@@ -117,10 +118,9 @@ const broadcastIfHost = (getState: () => GameStoreState) => {
   const state = getState();
   if (state.networkRole === 'host') {
     const { players, board, currentPlayerIndex, turnPhase, consecutiveDoubles, lastDiceRoll, actionDeadline, lastEvent, gameLog, turnCount, chanceDeck, communityChestDeck, activeTradeOffer, winCondition, chronoEndTime, turnTimeRemaining } = state;
-    NetworkManager.broadcast({
-      type: 'STATE_UPDATE',
-      payload: { players, board, currentPlayerIndex, turnPhase, consecutiveDoubles, lastDiceRoll, actionDeadline, lastEvent, gameLog, turnCount, chanceDeck, communityChestDeck, activeTradeOffer, winCondition, chronoEndTime, turnTimeRemaining }
-    });
+    const payload = { players, board, currentPlayerIndex, turnPhase, consecutiveDoubles, lastDiceRoll, actionDeadline, lastEvent, gameLog, turnCount, chanceDeck, communityChestDeck, activeTradeOffer, winCondition, chronoEndTime, turnTimeRemaining };
+    NetworkManager.broadcast({ type: 'STATE_UPDATE', payload });
+    saveGameState({ ...payload, _connectedClients: state.connectedClients });
   }
 };
 
@@ -266,9 +266,19 @@ export const useGameStore = create<GameStoreState & GameActions>((setOriginal, g
   },
 
   syncState: (newState) => {
+    if (!newState) return;
+    
     // Preserve local-only fields that must never be overwritten by network sync
     const { networkRole, networkStatus, clientId, localPlayerId, appScreen } = get();
-    set({ ...newState, networkRole, networkStatus, clientId, localPlayerId, appScreen });
+    
+    set({ 
+      ...newState, 
+      networkRole, 
+      networkStatus, 
+      clientId, 
+      localPlayerId, 
+      appScreen,
+    });
   },
 
   resetToLobby: () => {
@@ -326,6 +336,7 @@ export const useGameStore = create<GameStoreState & GameActions>((setOriginal, g
       jailTurns: 0, 
       hasGetOutOfJailCard: false,
       isBankrupt: false,
+      consecutiveTimeouts: 0,
     }));
     const initialChance = shuffleArray(Array.from({ length: 16 }, (_, i) => i));
     const initialCommunity = shuffleArray(Array.from({ length: 16 }, (_, i) => i));
@@ -353,7 +364,7 @@ export const useGameStore = create<GameStoreState & GameActions>((setOriginal, g
     broadcastIfHost(get);
   },
 
-  rollDice: () => {
+  rollDice: (isManual = true) => {
     const { turnPhase, consecutiveDoubles, players, currentPlayerIndex, networkRole } = get();
     if (turnPhase !== 'WAITING_FOR_DICE') return;
 
@@ -369,6 +380,12 @@ export const useGameStore = create<GameStoreState & GameActions>((setOriginal, g
     
     const newPlayers = [...players];
     const player = { ...newPlayers[currentPlayerIndex] };
+    
+    // Reset consecutive timeouts only when player rolls dice manually
+    if (isManual) {
+      player.consecutiveTimeouts = 0;
+    }
+    newPlayers[currentPlayerIndex] = player;
 
     // Règle de la prison (3 doubles consécutifs)
     if (nextDoublesCount === 3) {
@@ -407,7 +424,8 @@ export const useGameStore = create<GameStoreState & GameActions>((setOriginal, g
     });
     // Clear timeout when player acts
     get().clearTurnTimeout();
-    broadcastIfHost(get);
+    // Only broadcast for manual rolls (auto rolls are already broadcasted by handleTimeout)
+    if (isManual) broadcastIfHost(get);
   },
 
   endAnimation: () => {
@@ -677,6 +695,7 @@ export const useGameStore = create<GameStoreState & GameActions>((setOriginal, g
     const newPlayers = [...players];
     const updatedPlayer = { ...newPlayers[currentPlayerIndex] };
     updatedPlayer.balance -= space.price;
+    updatedPlayer.consecutiveTimeouts = 0; // Reset timeouts when player acts manually
     newPlayers[currentPlayerIndex] = updatedPlayer;
 
     const newBoard = { ...board };
@@ -707,11 +726,19 @@ export const useGameStore = create<GameStoreState & GameActions>((setOriginal, g
       return;
     }
 
-    const player = players[currentPlayerIndex];
+    // Reset consecutive timeouts when player acts manually
+    const newPlayers = [...players];
+    newPlayers[currentPlayerIndex] = {
+      ...newPlayers[currentPlayerIndex],
+      consecutiveTimeouts: 0
+    };
+
+    const player = newPlayers[currentPlayerIndex];
     const space = STATIC_BOARD[player.position];
     set({ 
       turnPhase: 'END_OF_TURN', 
       actionDeadline: null,
+      players: newPlayers,
       lastEvent: { type: 'info', message: `${player.name} passe sur ${space?.name || 'la case'}`, emoji: '⏭️' },
     });
     // Clear timeout when player acts
@@ -928,6 +955,8 @@ export const useGameStore = create<GameStoreState & GameActions>((setOriginal, g
         actionDeadline: null,
         lastEvent: { type: 'info', message: `${currentPlayer.name} a fait un double et rejoue !`, emoji: '🎲' },
       });
+      // Restart timer for the new turn (20 seconds again)
+      get().startTurnTimeout();
       broadcastIfHost(get);
       return;
     }
@@ -1333,17 +1362,52 @@ export const useGameStore = create<GameStoreState & GameActions>((setOriginal, g
   },
 
   handleTimeout: () => {
-    const { turnPhase, networkRole } = get();
+    const { turnPhase, networkRole, currentPlayerIndex, players } = get();
     if (networkRole === 'client') return; // Host handles timeouts
     
-    if (turnPhase === 'WAITING_FOR_DICE') get().rollDice();
+    const currentPlayer = players[currentPlayerIndex];
+    if (!currentPlayer || currentPlayer.isBot) return;
+    
+    // Increment consecutive timeouts counter
+    const newPlayers = [...players];
+    const playerIndex = currentPlayerIndex; // Use current index directly
+    
+    if (playerIndex >= 0 && playerIndex < newPlayers.length) {
+      newPlayers[playerIndex] = {
+        ...newPlayers[playerIndex],
+        consecutiveTimeouts: (newPlayers[playerIndex].consecutiveTimeouts || 0) + 1
+      };
+    }
+    
+    // Check if player has 3 consecutive timeouts
+    if (newPlayers[playerIndex].consecutiveTimeouts >= 3) {
+      // Player is bankrupt due to inactivity
+      get().handleBankruptcy(currentPlayer.id, null);
+      set({ 
+        players: newPlayers,
+        lastEvent: {
+          type: 'bankruptcy',
+          message: `${currentPlayer.name} éliminé pour inactivité (3 timeouts)`,
+          emoji: '⏰'
+        }
+      });
+      return;
+    }
+    
+    // Update players with incremented counter BEFORE executing action
+    set({ players: newPlayers });
+    
+    // Broadcast the updated state with new consecutiveTimeouts
+    broadcastIfHost(get);
+    
+    // Execute the timeout action
+    if (turnPhase === 'WAITING_FOR_DICE') get().rollDice(false); // Auto roll, don't reset timeouts
     else if (turnPhase === 'WAITING_FOR_DECISION') get().skipPurchase();
     else if (turnPhase === 'IN_JAIL_DECISION') get().rollForJailBreak();
   },
 
   startTurnTimeout: () => {
     const { networkRole, currentPlayerIndex, players } = get();
-    console.log(`⏰ [TIMER] startTurnTimeout called - role: ${networkRole}, playerIndex: ${currentPlayerIndex}`);
     
     // Only host manages the actual timeout, but all players can see the timer
     if (networkRole === 'host') {
@@ -1356,12 +1420,9 @@ export const useGameStore = create<GameStoreState & GameActions>((setOriginal, g
       // Don't set timeout for bots
       const currentPlayer = players[currentPlayerIndex];
       if (currentPlayer?.isBot) {
-        console.log(`[Timer] Player ${currentPlayer.name} is bot, no timer`);
         set({ turnTimeRemaining: null });
         return;
       }
-      
-      console.log(`[Timer] Starting 20s timer for player ${currentPlayer?.name}`);
       // Record start time and set initial remaining time
       turnTimeoutStart = Date.now();
       set({ turnTimeRemaining: TURN_TIMEOUT_MS });
@@ -1373,7 +1434,6 @@ export const useGameStore = create<GameStoreState & GameActions>((setOriginal, g
         set({ turnTimeRemaining: remaining });
         
         // Broadcast timer update to clients
-        console.log(`📡 [BROADCAST] TIMER_UPDATE: ${remaining}ms`);
         NetworkManager.broadcast({
           type: 'TIMER_UPDATE',
           payload: { turnTimeRemaining: remaining }
@@ -1387,24 +1447,20 @@ export const useGameStore = create<GameStoreState & GameActions>((setOriginal, g
       // Set new timeout for 20 seconds
       turnTimeoutTimer = setTimeout(() => {
         clearInterval(updateInterval);
-        console.log(`[Timeout] 20s elapsed for player ${currentPlayer?.name}, auto-playing`);
         get().handleTimeout();
       }, TURN_TIMEOUT_MS);
     } else {
       // For clients, just show the timer without managing the timeout
       const currentPlayer = players[currentPlayerIndex];
       if (currentPlayer?.isBot) {
-        console.log(`[Timer] Client: Player ${currentPlayer.name} is bot, no timer`);
         set({ turnTimeRemaining: null });
       } else {
-        console.log(`[Timer] Client: Showing timer for player ${currentPlayer?.name}`);
         set({ turnTimeRemaining: TURN_TIMEOUT_MS });
       }
     }
   },
 
   clearTurnTimeout: () => {
-    console.log(`[Timer] clearTurnTimeout called`);
     if (turnTimeoutTimer) {
       clearTimeout(turnTimeoutTimer);
       turnTimeoutTimer = null;
@@ -1413,7 +1469,6 @@ export const useGameStore = create<GameStoreState & GameActions>((setOriginal, g
   },
 
   setTurnTimeRemaining: (remaining: number | null) => {
-    console.log(`[Store] setTurnTimeRemaining called with:`, remaining);
     set({ turnTimeRemaining: remaining });
   },
 };});

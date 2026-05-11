@@ -4,7 +4,7 @@ import { COLORS, SPACING, BORDER_RADIUS } from '../styles/theme';
 import { NetworkManager } from '../network/NetworkManager';
 import { useGameStore, ConnectedClient } from '../store/useGameStore';
 import { RELAY_URL, RELAY_HTTP_URL } from '../constants/config';
-import { saveSession, loadSession, clearSession } from '../utils/sessionStorage';
+import { saveSession, loadSession, clearSession, loadGameState, clearGameState } from '../utils/sessionStorage';
 
 type LobbyMode = 'select' | 'host' | 'client' | 'online_host' | 'online_client';
 
@@ -88,6 +88,8 @@ export const LobbyScreen = () => {
   const [savedSession, setSavedSession] = useState<import('../utils/sessionStorage').SavedSession | null>(null);
   // Map playerId → timer for grace-period bankruptcy
   const bankruptcyTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+  // Grace period timer before showing host-disconnected modal
+  const hostGraceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   
   const setNetworkRole = useGameStore(s => s.setNetworkRole);
   const setLocalPlayerId = useGameStore(s => s.setLocalPlayerId);
@@ -251,13 +253,18 @@ export const LobbyScreen = () => {
         // We were a client and the host disconnected
         const { appScreen } = useGameStore.getState();
         if (appScreen === 'game') {
-          // 'host_left' = intentional (HOST_LEFT relay msg) → offer bot choice
-          // 'host'      = network drop → fatal disconnect modal
-          const status = clientId === 'host_left' ? 'host_disconnected' : 'disconnected';
-          useGameStore.getState().setNetworkStatus(status);
+          // Give host 60s grace period to refresh/reconnect before showing modal
+          if (hostGraceTimer.current) clearTimeout(hostGraceTimer.current);
+          hostGraceTimer.current = setTimeout(() => {
+            const status = clientId === 'host_left' ? 'host_disconnected' : 'disconnected';
+            useGameStore.getState().setNetworkStatus(status);
+          }, 60000);
         } else {
-          // In lobby: just show error and go back to select
-          setConnectionError('Hôte déconnecté');
+          // In lobby: clear session, show error and go back to select
+          clearSession();
+          setSavedSession(null);
+          NetworkManager.cleanup();
+          setConnectionError('Hôte déconnecté - La room a été fermée');
           setMode('select');
         }
       }
@@ -295,17 +302,33 @@ export const LobbyScreen = () => {
       }
 
       if (packet.type === 'GAME_START') {
+        // Host is back — cancel any pending disconnect timer
+        if (hostGraceTimer.current) { clearTimeout(hostGraceTimer.current); hostGraceTimer.current = null; }
+        useGameStore.getState().setNetworkStatus('connected');
         syncState(packet.payload);
         setAppScreen('game');
       } else if (packet.type === 'STATE_UPDATE') {
+        // Host is back — cancel any pending disconnect timer
+        if (hostGraceTimer.current) { clearTimeout(hostGraceTimer.current); hostGraceTimer.current = null; }
+        useGameStore.getState().setNetworkStatus('connected');
         syncState(packet.payload);
       } else if (packet.type === 'TIMER_UPDATE') {
         // Update timer from host
-        console.log(`[Lobby] Received TIMER_UPDATE:`, packet.payload.turnTimeRemaining);
         useGameStore.getState().setTurnTimeRemaining(packet.payload.turnTimeRemaining);
       } else if (packet.type === 'HOST_REJOINED') {
-        // Host came back — dismiss disconnect modal if showing
+        // Host came back — cancel grace timer and dismiss disconnect modal if showing
+        if (hostGraceTimer.current) { clearTimeout(hostGraceTimer.current); hostGraceTimer.current = null; }
         useGameStore.getState().setNetworkStatus('connected');
+      }
+
+      if (packet.type === 'ROOM_DISSOLVED' || packet.type === 'ROOM_DELETED') {
+        // Room was deleted by host or server - clear session and return to select
+        clearSession();
+        setSavedSession(null);
+        NetworkManager.cleanup();
+        setConnectionError('La room a été fermée par l\'hôte');
+        setMode('select');
+        return;
       }
       
       // Handle client requests on the host side
@@ -365,9 +388,16 @@ export const LobbyScreen = () => {
 
       const state = useGameStore.getState();
       const { players, board, currentPlayerIndex, turnPhase, consecutiveDoubles, lastDiceRoll, actionDeadline, lastEvent, winCondition, chronoEndTime } = state;
+      
+      // Ensure all players have consecutiveTimeouts property
+      const playersWithTimeouts = players.map(player => ({
+        ...player,
+        consecutiveTimeouts: player.consecutiveTimeouts || 0
+      }));
+      
       NetworkManager.sendTo(newSocketId, {
         type: 'GAME_START',
-        payload: { players, board, currentPlayerIndex, turnPhase, consecutiveDoubles, lastDiceRoll, actionDeadline, lastEvent, winCondition, chronoEndTime }
+        payload: { players: playersWithTimeouts, board, currentPlayerIndex, turnPhase, consecutiveDoubles, lastDiceRoll, actionDeadline, lastEvent, winCondition, chronoEndTime }
       });
       console.log(`[Lobby] Re-synced state to rejoined player ${localPlayerId} (${newSocketId})`);
     });
@@ -399,13 +429,29 @@ export const LobbyScreen = () => {
       NetworkManager._startHostHeartbeat();
       setConnectionError('');
       saveSession(session);
-      // After host rejoin, we're back in lobby state (game state will be restored when clients rejoin)
-      setMode('online_host');
+      // If game was already started (persisted in session), restore state and go back to game screen
+      if (session.gameStarted) {
+        const savedState = loadGameState();
+        if (savedState) {
+          useGameStore.getState().syncState(savedState);
+          // Restore connectedClients so host knows which players are remote
+          if (savedState._connectedClients) {
+            setConnectedClients(savedState._connectedClients);
+          }
+          // Broadcast state to clients so they know host is back and dismiss disconnect modal
+          const { _connectedClients, savedAt, ...payload } = savedState;
+          NetworkManager.broadcast({ type: 'STATE_UPDATE', payload });
+        }
+        setAppScreen('game');
+      } else {
+        setMode('online_host');
+      }
     } catch (e: any) {
-      clearSession();
-      setSavedSession(null);
+      // Don't clear session — keep it so user can still delete the room from the list
       setConnectionError(e?.message || 'Impossible de reprendre la room.');
       NetworkManager.setTransport('tcp');
+      // Fetch rooms so user can see their room in the list with delete option
+      fetchLiveRooms();
     } finally {
       setIsConnecting(false);
     }
@@ -437,9 +483,25 @@ export const LobbyScreen = () => {
       NetworkManager.cleanup();
       setConnectedClients([]);
       setRoomCode('');
+      setNetworkRole('local');
+      setLocalPlayerId('');
       clearSession();
       setMode('select');
     }
+  };
+
+  const handleDeleteRoomFromList = async (targetRoomCode: string) => {
+    try {
+      await fetch(`${RELAY_HTTP_URL}/rooms/${targetRoomCode}`, { method: 'DELETE' });
+    } catch (e) {
+      console.warn('[Lobby] Failed to delete room via HTTP:', e);
+    }
+    NetworkManager.cleanup();
+    clearSession();
+    clearGameState();
+    setSavedSession(null);
+    // Refresh room list
+    fetchLiveRooms();
   };
 
   const handleOnlineJoin = async () => {
@@ -522,11 +584,22 @@ export const LobbyScreen = () => {
     // Broadcast GAME_START with full initial state to all connected clients
     const state = useGameStore.getState();
     const { players, board, currentPlayerIndex, turnPhase, consecutiveDoubles, lastDiceRoll, actionDeadline, lastEvent, winCondition, chronoEndTime } = state;
+    
+    // Ensure all players have consecutiveTimeouts property
+    const playersWithTimeouts = players.map(player => ({
+      ...player,
+      consecutiveTimeouts: player.consecutiveTimeouts || 0
+    }));
+    
     NetworkManager.broadcast({
       type: 'GAME_START',
-      payload: { players, board, currentPlayerIndex, turnPhase, consecutiveDoubles, lastDiceRoll, actionDeadline, lastEvent, winCondition, chronoEndTime }
+      payload: { players: playersWithTimeouts, board, currentPlayerIndex, turnPhase, consecutiveDoubles, lastDiceRoll, actionDeadline, lastEvent, winCondition, chronoEndTime }
     });
     NetworkManager.notifyGameStart();
+
+    // Mark game as started in session for page-refresh recovery
+    const sess = loadSession();
+    if (sess) saveSession({ ...sess, gameStarted: true });
 
     setAppScreen('game');
   };
@@ -852,13 +925,13 @@ export const LobbyScreen = () => {
                       <View style={[styles.badge, room.status === 'lobby' ? styles.badgeLobby : styles.badgePlaying]}>
                         <Text style={styles.badgeText}>{room.status === 'lobby' ? 'Lobby' : 'En cours'}</Text>
                       </View>
-                      <Text style={styles.liveMeta}>{room.playerCount} joueur{room.playerCount > 1 ? 's' : ''}</Text>
+                      <Text style={styles.liveMeta}>{`${room.playerCount} joueur${room.playerCount > 1 ? 's' : ''}`}</Text>
                     </View>
                   </View>
                   <View style={{ gap: 6, alignItems: 'flex-end' }}>
                     {savedSession?.roomCode === room.roomCode && (
-                      <TouchableOpacity style={[styles.joinBtn, { backgroundColor: COLORS.madaGreen }]} disabled={isConnecting} onPress={() => handleRejoin(savedSession!)}>
-                        <Text style={styles.joinBtnText}>▶ Reprendre</Text>
+                      <TouchableOpacity style={[styles.joinBtn, { backgroundColor: COLORS.madaGreen }]} disabled={isConnecting} onPress={() => savedSession!.localPlayerId === 'host' ? handleHostRejoin(savedSession!) : handleRejoin(savedSession!)}>
+                        <Text style={styles.joinBtnText}>{'▶ Reprendre'}</Text>
                       </TouchableOpacity>
                     )}
                     {room.status === 'lobby' && savedSession?.roomCode !== room.roomCode && (
@@ -879,32 +952,14 @@ export const LobbyScreen = () => {
                           NetworkManager.setTransport('tcp');
                         } finally { setIsConnecting(false); }
                       }}>
-                        <Text style={styles.joinBtnText}>Rejoindre</Text>
-                      </TouchableOpacity>
-                    )}
-                    {room.status === 'lobby' && savedSession?.roomCode === room.roomCode && (
-                      <TouchableOpacity style={styles.joinBtn} disabled={isConnecting} onPress={async () => {
-                        setClientInputRoomCode(room.roomCode);
-                        setIsConnecting(true);
-                        setConnectionError('En attente d\'approbation de l\'hôte...');
-                        NetworkManager.setTransport('websocket', RELAY_URL);
-                        try {
-                          await NetworkManager.joinRoom(room.roomCode, localPlayerName, localPlayerAvatar);
-                          setMode('online_client');
-                          const playerId = useGameStore.getState().localPlayerId;
-                          setNetworkRole('client', 'client-' + Date.now());
-                          setConnectionError('');
-                          if (playerId) saveSession({ roomCode: room.roomCode, localPlayerId: playerId, playerName: localPlayerName, playerAvatar: localPlayerAvatar });
-                        } catch (e: any) {
-                          setConnectionError(e?.message || 'Connexion impossible.');
-                          NetworkManager.setTransport('tcp');
-                        } finally { setIsConnecting(false); }
-                      }}>
-                        <Text style={styles.joinBtnText}>Rejoindre</Text>
+                        <Text style={styles.joinBtnText}>{'Rejoindre'}</Text>
                       </TouchableOpacity>
                     )}
                     <TouchableOpacity style={styles.watchBtn} onPress={() => handleWatch(room.roomCode)} disabled={isConnecting}>
-                      <Text style={styles.watchBtnText}>👁 Regarder</Text>
+                      <Text style={styles.watchBtnText}>{'👁 Regarder'}</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={[styles.watchBtn, { borderColor: COLORS.danger }]} onPress={() => handleDeleteRoomFromList(room.roomCode)} disabled={isConnecting}>
+                      <Text style={[styles.watchBtnText, { color: COLORS.danger }]}>{'🗑 Supprimer'}</Text>
                     </TouchableOpacity>
                   </View>
                 </View>

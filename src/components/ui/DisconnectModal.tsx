@@ -1,5 +1,7 @@
-import React, { useEffect } from 'react';
-import { StyleSheet, View, Text, TouchableOpacity, Dimensions } from 'react-native';
+import React, { useEffect, useState, useRef } from 'react';
+import { StyleSheet, View, Text, TouchableOpacity, Dimensions, ActivityIndicator } from 'react-native';
+import { NetworkManager } from '../../network/NetworkManager';
+import { RELAY_URL } from '../../constants/config';
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
@@ -26,12 +28,67 @@ export const DisconnectModal = () => {
   const networkRole = useGameStore((s) => s.networkRole);
   const resetToLobby = useGameStore((s) => s.resetToLobby);
   const convertHostToBot = useGameStore((s) => s.convertHostToBot);
+  const syncState = useGameStore((s) => s.syncState);
+  const setNetworkStatus = useGameStore((s) => s.setNetworkStatus);
+  const localPlayerId = useGameStore((s) => s.localPlayerId);
+  const localPlayerName = useGameStore((s) => s.localPlayerName);
+  const localPlayerAvatar = useGameStore((s) => s.localPlayerAvatar);
+
+  const [countdown, setCountdown] = useState(60);
+  const [isReconnecting, setIsReconnecting] = useState(false);
+  const [reconnectError, setReconnectError] = useState<string | null>(null);
+  const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const isVisible =
     (networkStatus === 'disconnected' || networkStatus === 'host_disconnected') &&
     networkRole !== 'local';
 
   const isHostGone = networkStatus === 'host_disconnected';
+  // Can reconnect if we are a client and have a room code stored
+  const storedRoomCode = NetworkManager.getRoomCode();
+  const canReconnect = networkRole === 'client' && !!storedRoomCode && !!localPlayerId && !isHostGone;
+
+  // Start countdown when modal becomes visible
+  useEffect(() => {
+    if (!isVisible) {
+      setCountdown(60);
+      setReconnectError(null);
+      if (countdownRef.current) clearInterval(countdownRef.current);
+      return;
+    }
+    setCountdown(60);
+    countdownRef.current = setInterval(() => {
+      setCountdown(prev => {
+        if (prev <= 1) {
+          clearInterval(countdownRef.current!);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    return () => { if (countdownRef.current) clearInterval(countdownRef.current); };
+  }, [isVisible]);
+
+  const handleReconnect = async () => {
+    if (!storedRoomCode || !localPlayerId) return;
+    setIsReconnecting(true);
+    setReconnectError(null);
+    try {
+      NetworkManager.setTransport('websocket', RELAY_URL);
+      await NetworkManager.rejoinRoom(storedRoomCode, localPlayerId, localPlayerName, localPlayerAvatar);
+      // Re-register message handler: wait for GAME_START re-sync from host
+      NetworkManager.onMessage((packet) => {
+        if (packet.type === 'GAME_START' || packet.type === 'STATE_UPDATE') {
+          syncState(packet.payload);
+          setNetworkStatus('connected');
+        }
+      });
+      setIsReconnecting(false);
+    } catch (e: any) {
+      setReconnectError(e.message || 'Reconnexion échouée');
+      setIsReconnecting(false);
+    }
+  };
 
   // ── Animation ──
   const progress = useSharedValue(0);
@@ -112,15 +169,42 @@ export const DisconnectModal = () => {
               </TouchableOpacity>
             </>
           ) : (
-            /* ── Full disconnect: only quit ── */
+            /* ── Disconnected client ── */
             <>
               <View style={styles.statusRow}>
                 <View style={styles.statusDot} />
                 <Text style={styles.statusText}>Hôte inaccessible</Text>
               </View>
 
+              {canReconnect && countdown > 0 && (
+                <Text style={styles.countdown}>
+                  Reconnexion possible pendant {countdown}s
+                </Text>
+              )}
+
+              {reconnectError && (
+                <Text style={styles.errorText}>{reconnectError}</Text>
+              )}
+
+              {canReconnect && countdown > 0 && (
+                <TouchableOpacity
+                  style={[styles.returnButton, styles.reconnectButton]}
+                  onPress={handleReconnect}
+                  disabled={isReconnecting}
+                  activeOpacity={0.85}
+                >
+                  {isReconnecting
+                    ? <ActivityIndicator color="#FFF" size="small" />
+                    : <>
+                        <Text style={styles.returnButtonEmoji}>🔄</Text>
+                        <Text style={styles.returnButtonText}>RECONNECTER</Text>
+                      </>
+                  }
+                </TouchableOpacity>
+              )}
+
               <TouchableOpacity
-                style={styles.returnButton}
+                style={[styles.returnButton, canReconnect ? styles.quitButton : undefined]}
                 onPress={resetToLobby}
                 activeOpacity={0.85}
               >
@@ -251,6 +335,27 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontFamily: 'Inter_900Black',
     letterSpacing: 2,
+  },
+
+  // ── Reconnect extras ──
+  countdown: {
+    color: 'rgba(255,255,255,0.5)',
+    fontSize: 13,
+    fontFamily: 'Inter_400Regular',
+    marginTop: 12,
+    textAlign: 'center',
+  },
+  errorText: {
+    color: '#EF4444',
+    fontSize: 13,
+    fontFamily: 'Inter_700Bold',
+    textAlign: 'center',
+    marginTop: 10,
+    paddingHorizontal: 20,
+  },
+  reconnectButton: {
+    backgroundColor: '#007A3D',
+    shadowColor: '#007A3D',
   },
 
   // ── Host gone variants ──

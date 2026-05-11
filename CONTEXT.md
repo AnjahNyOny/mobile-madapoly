@@ -115,4 +115,7 @@ Voici la configuration matérielle et réseau utilisée pour valider le code :
 * **Déploiement à chaud :** Une fois les applications natives installées sur les deux appareils, le serveur Metro (`npx expo start --dev-client`) est utilisé pour injecter le bundle JavaScript via le Wi-Fi.
 * 
 * pour tester en local : lancer relay (`npm start`) et ensuite lancer app sur les deux appareils : (`npx expo start --dev-client`)
+* 
+* pour arreter les processus : `pkill -f "expo start" ; pkill -f "relay-server/server.js" ; pkill -f "node server.js"`
+* 
 * **Relay de production (Render) :** `wss://mobile-madapoly.onrender.com` — utilisé automatiquement en mode release (`__DEV__ === false`). ⚠️ Le service Render gratuit dort après 15 min d'inactivité : la première connexion peut prendre ~30s.

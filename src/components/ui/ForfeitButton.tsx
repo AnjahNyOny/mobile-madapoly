@@ -33,7 +33,7 @@ export const ForfeitButton = () => {
         onPress={() => setShowConfirm(true)}
         activeOpacity={0.7}
       >
-        <Text style={styles.settingsIcon}>⚙️</Text>
+        <Text style={styles.settingsIcon}>🏳️</Text>
       </TouchableOpacity>
 
       {/* Confirmation Modal */}
@@ -77,19 +77,17 @@ export const ForfeitButton = () => {
 
 const styles = StyleSheet.create({
   settingsButton: {
-    position: 'absolute',
-    top: 8,
-    right: 8,
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: 'rgba(255,255,255,0.08)',
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: 'rgba(255,255,255,0.07)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
     justifyContent: 'center',
     alignItems: 'center',
-    zIndex: 10,
   },
   settingsIcon: {
-    fontSize: 20,
+    fontSize: 17,
   },
 
   // ── Modal ──

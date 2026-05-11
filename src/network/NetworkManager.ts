@@ -70,6 +70,7 @@ let onMessageCallback: MessageHandler | null = null;
 let onConnectionCallback: ((clientId: string) => void) | null = null;
 let onDisconnectCallback: ((clientId: string) => void) | null = null;
 let onJoinRequestCallback: ((socketId: string, playerName: string, playerAvatar: string) => void) | null = null;
+let onPlayerRejoinedCallback: ((socketId: string, localPlayerId: string) => void) | null = null;
 
 export const NetworkManager = {
 
@@ -121,7 +122,7 @@ export const NetworkManager = {
         return;
       }
 
-      server = TcpSocket!.createServer((socket) => {
+      server = TcpSocket!.createServer((socket: any) => {
         socket.setEncoding('utf8');
         const clientId = `${socket.remoteAddress}:${socket.remotePort}`;
         console.log(`[Host/TCP] Client connected: ${clientId}`);
@@ -130,7 +131,7 @@ export const NetworkManager = {
         clientLastPingTimestamp.set(clientId, Date.now());
         if (onConnectionCallback) onConnectionCallback(clientId);
 
-        socket.on('data', (data) => {
+        socket.on('data', (data: any) => {
           let buffer = hostBuffers.get(clientId) || '';
           buffer += data.toString();
           const parts = buffer.split('\n');
@@ -162,7 +163,7 @@ export const NetworkManager = {
           if (onDisconnectCallback) onDisconnectCallback(clientId);
         };
 
-        socket.on('error', (error) => {
+        socket.on('error', (error: any) => {
           console.error(`[Host/TCP] Socket error with ${clientId}:`, error);
           triggerClientDisconnect();
         });
@@ -173,7 +174,7 @@ export const NetworkManager = {
         });
       });
 
-      server.on('error', (error) => {
+      server.on('error', (error: any) => {
         console.error('[Host/TCP] Server error:', error);
         reject(error);
       });
@@ -255,7 +256,7 @@ export const NetworkManager = {
         resolve();
       });
 
-      clientSocket.on('data', (data) => {
+      clientSocket.on('data', (data: any) => {
         clientBuffer += data.toString();
         const parts = clientBuffer.split('\n');
         clientBuffer = parts.pop() || '';
@@ -277,7 +278,7 @@ export const NetworkManager = {
         }
       });
 
-      clientSocket.on('error', (error) => {
+      clientSocket.on('error', (error: any) => {
         console.error('[Client/TCP] Socket error:', error);
         triggerDisconnect();
         reject(error);
@@ -430,6 +431,15 @@ export const NetworkManager = {
       wsConnectedClients.delete(relayId);
       clientLastPingTimestamp.delete(relayId);
       if (onDisconnectCallback) onDisconnectCallback(relayId);
+      return;
+    }
+
+    if (packet.type === 'PLAYER_REJOINED') {
+      const { socketId: relayId, localPlayerId } = packet as any;
+      console.log(`[Host/WS] Player rejoined: ${localPlayerId} as ${relayId}`);
+      wsConnectedClients.set(relayId, { socketId: relayId });
+      clientLastPingTimestamp.set(relayId, Date.now());
+      if (onPlayerRejoinedCallback) onPlayerRejoinedCallback(relayId, localPlayerId);
       return;
     }
 
@@ -767,6 +777,95 @@ export const NetworkManager = {
 
   onJoinRequest(callback: (socketId: string, playerName: string, playerAvatar: string) => void) {
     onJoinRequestCallback = callback;
+  },
+
+  onPlayerRejoined(callback: (socketId: string, localPlayerId: string) => void) {
+    onPlayerRejoinedCallback = callback;
+  },
+
+  registerPlayerId(roomCode: string, localPlayerId: string) {
+    if (!wsSocket || wsSocket.readyState !== WebSocket.OPEN) return;
+    wsSocket.send(JSON.stringify({ type: 'REGISTER_PLAYER_ID', roomCode, localPlayerId }));
+  },
+
+  rejoinRoom(roomCode: string, localPlayerId: string, playerName: string, playerAvatar: string): Promise<void> {
+    const MAX_ATTEMPTS = 3;
+    const RETRY_DELAY_MS = 2000;
+    const CONNECT_TIMEOUT_MS = 20000;
+
+    return new Promise((resolve, reject) => {
+      NetworkManager._wsCleanup();
+
+      const url = relayUrl;
+      console.log(`[Client/WS] Rejoining room ${roomCode} as ${localPlayerId}...`);
+
+      try {
+        wsSocket = new WebSocket(url);
+      } catch (e) {
+        reject(new Error('WebSocket not available'));
+        return;
+      }
+
+      let didResolve = false;
+      let attempt = 1;
+
+      const tryConnect = () => {
+        const timeout = setTimeout(() => {
+          if (didResolve) return;
+          wsSocket?.close();
+          if (attempt < MAX_ATTEMPTS) {
+            attempt++;
+            console.warn(`[Client/WS] Rejoin timeout — retrying (${attempt}/${MAX_ATTEMPTS})...`);
+            setTimeout(tryConnect, RETRY_DELAY_MS);
+          } else {
+            reject(new Error('Impossible de rejoindre la partie. Salle expirée ?'));
+          }
+        }, CONNECT_TIMEOUT_MS);
+
+        wsSocket!.onopen = () => {
+          clearTimeout(timeout);
+          wsSocket!.send(JSON.stringify({ type: 'REJOIN_ROOM', roomCode, localPlayerId, playerName, playerAvatar }));
+        };
+
+        wsSocket!.onmessage = (event) => {
+          let packet: NetworkPacket;
+          try { packet = JSON.parse(event.data as string); } catch { return; }
+
+          if (packet.type === 'REJOIN_ACCEPTED') {
+            didResolve = true;
+            wsRoomCode = (packet as any).roomCode;
+            wsLocalSocketId = (packet as any).socketId;
+            console.log(`[Client/WS] Rejoin accepted for room ${wsRoomCode}`);
+            resolve();
+            wsSocket!.onmessage = NetworkManager._wsClientMessageHandler;
+            return;
+          }
+
+          if (packet.type === 'REJOIN_ERROR') {
+            didResolve = true;
+            reject(new Error((packet as any).reason || 'Reconnexion refusée'));
+            wsSocket?.close();
+          }
+        };
+
+        wsSocket!.onerror = () => {
+          if (didResolve) return;
+          clearTimeout(timeout);
+          if (attempt < MAX_ATTEMPTS) {
+            attempt++;
+            setTimeout(tryConnect, RETRY_DELAY_MS);
+          } else {
+            reject(new Error('Relay inaccessible.'));
+          }
+        };
+
+        wsSocket!.onclose = () => {
+          if (!didResolve && onDisconnectCallback) onDisconnectCallback('host');
+        };
+      };
+
+      tryConnect();
+    });
   },
 
   approveJoin(socketId: string) {

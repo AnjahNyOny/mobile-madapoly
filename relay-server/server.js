@@ -37,6 +37,8 @@ const roomNames = new Map();
 const roomStatus = new Map();
 // pendingJoinRequests: Map<roomCode, Map<socketId, {ws, playerName, playerAvatar}>>  — awaiting host approval
 const pendingJoinRequests = new Map();
+// roomPlayerIds: Map<roomCode, Map<localPlayerId, socketId>>  — stable player identity per room
+const roomPlayerIds = new Map();
 // socketMeta: Map<WebSocket, { roomCode, socketId, packetCount, packetWindow, isSpectator }>
 const socketMeta = new Map();
 // roomTimers: Map<roomCode, NodeJS.Timeout>  — idle cleanup timers
@@ -102,6 +104,7 @@ function dissolveRoom(roomCode, reason) {
   roomNames.delete(roomCode);
   roomStatus.delete(roomCode);
   pendingJoinRequests.delete(roomCode);
+  roomPlayerIds.delete(roomCode);
   const t1 = roomTimers.get(roomCode);
   if (t1) { clearTimeout(t1); roomTimers.delete(roomCode); }
   const t2 = hostGoneTimers.get(roomCode);
@@ -405,6 +408,51 @@ wss.on('connection', (ws) => {
       pending.delete(targetId);
       send(req.ws, { type: 'JOIN_REJECTED', reason: reason || 'Host declined' });
       console.log(`[Relay] Host rejected ${targetId} for room ${roomCode}`);
+      return;
+    }
+
+    if (type === 'REGISTER_PLAYER_ID') {
+      // Called by host/client after ASSIGN_PLAYER_ID to map localPlayerId → relaySocketId
+      const { roomCode: rc, localPlayerId } = packet;
+      if (!rc || !localPlayerId) return;
+      if (!roomPlayerIds.has(rc)) roomPlayerIds.set(rc, new Map());
+      roomPlayerIds.get(rc).set(localPlayerId, meta.socketId);
+      console.log(`[Relay] Registered ${localPlayerId} → ${meta.socketId} in room ${rc}`);
+      return;
+    }
+
+    if (type === 'REJOIN_ROOM') {
+      // Player reconnecting after drop — bypass host approval if localPlayerId is known
+      const { roomCode: rc, localPlayerId, playerName, playerAvatar } = packet;
+      if (!rc || !localPlayerId) { send(ws, { type: 'REJOIN_ERROR', reason: 'Missing roomCode or localPlayerId' }); return; }
+
+      const room = rooms.get(rc);
+      if (!room) { send(ws, { type: 'REJOIN_ERROR', reason: 'Room not found or expired' }); return; }
+
+      const playerIds = roomPlayerIds.get(rc);
+      if (!playerIds || !playerIds.has(localPlayerId)) {
+        send(ws, { type: 'REJOIN_ERROR', reason: 'Player not recognized in this room' });
+        return;
+      }
+
+      // Update the socketId mapping to the new socket
+      playerIds.set(localPlayerId, meta.socketId);
+
+      leaveRoom(ws);
+      room.add(ws);
+      meta.roomCode = rc;
+
+      const timer = roomTimers.get(rc);
+      if (timer) { clearTimeout(timer); roomTimers.delete(rc); }
+      const hgTimer = hostGoneTimers.get(rc);
+      if (hgTimer) { clearTimeout(hgTimer); hostGoneTimers.delete(rc); }
+
+      console.log(`[Relay] ${localPlayerId} rejoined room ${rc} as ${meta.socketId}`);
+      send(ws, { type: 'REJOIN_ACCEPTED', roomCode: rc, socketId: meta.socketId, localPlayerId });
+
+      // Notify host so it can re-sync state
+      const hostWs = roomHosts.get(rc);
+      if (hostWs) send(hostWs, { type: 'PLAYER_REJOINED', socketId: meta.socketId, localPlayerId, playerName, playerAvatar });
       return;
     }
 

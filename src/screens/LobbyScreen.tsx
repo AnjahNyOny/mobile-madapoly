@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { StyleSheet, View, Text, TouchableOpacity, TextInput, SafeAreaView, ActivityIndicator, Clipboard, ScrollView, Platform } from 'react-native';
+import React, { useState, useEffect, useRef } from 'react';
+import { StyleSheet, View, Text, TouchableOpacity, TextInput, SafeAreaView, ActivityIndicator, Clipboard, ScrollView, Platform, Animated, Easing, Image } from 'react-native';
 import { COLORS, SPACING, BORDER_RADIUS } from '../styles/theme';
 import { NetworkManager } from '../network/NetworkManager';
 import { useGameStore, ConnectedClient } from '../store/useGameStore';
@@ -9,8 +9,65 @@ type LobbyMode = 'select' | 'host' | 'client' | 'online_host' | 'online_client';
 
 const AVATARS = ['🎩', '🚗', '🐕', '🚢', '👟', '🛒', '🐴', '🚜'];
 
+const TOKENS: { id: string; label: string; image: any }[] = [
+  { id: 'lemur-madagascar', label: 'Lémur',       image: require('../../assets/images/tokens/lemur-madagascar.png') },
+  { id: 'cow',              label: 'Zébu',         image: require('../../assets/images/tokens/cow.png') },
+  { id: 'chameleon',        label: 'Caméléon',     image: require('../../assets/images/tokens/chameleon.png') },
+  { id: 'crocodile',        label: 'Crocodile',    image: require('../../assets/images/tokens/crocodile.png') },
+  { id: 'eagle',            label: 'Aigle',        image: require('../../assets/images/tokens/eagle.png') },
+  { id: 'lion',             label: 'Lion',         image: require('../../assets/images/tokens/lion.png') },
+  { id: 'turtle',           label: 'Tortue',       image: require('../../assets/images/tokens/turtle.png') },
+  { id: 'frog',             label: 'Grenouille',   image: require('../../assets/images/tokens/frog.png') },
+  { id: 'angler-fish',      label: 'Poisson',      image: require('../../assets/images/tokens/angler-fish.png') },
+  { id: 'anteater',         label: 'Fourmilier',   image: require('../../assets/images/tokens/anteater.png') },
+  { id: 'baboon',           label: 'Babouin',      image: require('../../assets/images/tokens/baboon.png') },
+  { id: 'bear',             label: 'Ours',         image: require('../../assets/images/tokens/bear.png') },
+  { id: 'beaver',           label: 'Castor',       image: require('../../assets/images/tokens/beaver.png') },
+  { id: 'bee',              label: 'Abeille',      image: require('../../assets/images/tokens/bee.png') },
+  { id: 'bison',            label: 'Bison',        image: require('../../assets/images/tokens/bison.png') },
+  { id: 'boar',             label: 'Sanglier',     image: require('../../assets/images/tokens/boar.png') },
+  { id: 'butterfly',        label: 'Papillon',     image: require('../../assets/images/tokens/butterfly.png') },
+  { id: 'capybara',         label: 'Capybara',     image: require('../../assets/images/tokens/capybara.png') },
+  { id: 'cat',              label: 'Chat',         image: require('../../assets/images/tokens/cat.png') },
+  { id: 'chimpanzee',       label: 'Chimpanzé',    image: require('../../assets/images/tokens/chimpanzee.png') },
+  { id: 'crab',             label: 'Crabe',        image: require('../../assets/images/tokens/crab.png') },
+  { id: 'deer',             label: 'Cerf',         image: require('../../assets/images/tokens/deer.png') },
+  { id: 'dolphin',          label: 'Dauphin',      image: require('../../assets/images/tokens/dolphin.png') },
+  { id: 'dove',             label: 'Colombe',      image: require('../../assets/images/tokens/dove.png') },
+  { id: 'elephant',         label: 'Éléphant',     image: require('../../assets/images/tokens/elephant.png') },
+  { id: 'fennec',           label: 'Fennec',       image: require('../../assets/images/tokens/fennec.png') },
+  { id: 'fox',              label: 'Renard',       image: require('../../assets/images/tokens/fox.png') },
+  { id: 'goat',             label: 'Chèvre',       image: require('../../assets/images/tokens/goat.png') },
+  { id: 'goldfish',         label: 'Poisson rouge',image: require('../../assets/images/tokens/goldfish.png') },
+  { id: 'guinea-pig',       label: 'Cochon d\'inde',image: require('../../assets/images/tokens/guinea-pig.png') },
+  { id: 'hedgehog',         label: 'Hérisson',     image: require('../../assets/images/tokens/hedgehog.png') },
+  { id: 'hippopotamus',     label: 'Hippo',        image: require('../../assets/images/tokens/hippopotamus.png') },
+  { id: 'horse',            label: 'Cheval',       image: require('../../assets/images/tokens/horse.png') },
+  { id: 'hyena',            label: 'Hyène',        image: require('../../assets/images/tokens/hyena.png') },
+  { id: 'kangaroo',         label: 'Kangourou',    image: require('../../assets/images/tokens/kangaroo.png') },
+  { id: 'koala',            label: 'Koala',        image: require('../../assets/images/tokens/koala.png') },
+  { id: 'llama',            label: 'Lama',         image: require('../../assets/images/tokens/llama.png') },
+  { id: 'mouse',            label: 'Souris',       image: require('../../assets/images/tokens/mouse.png') },
+  { id: 'owl',              label: 'Hibou',        image: require('../../assets/images/tokens/owl.png') },
+  { id: 'panda-bear-panda', label: 'Panda',        image: require('../../assets/images/tokens/panda-bear-panda.png') },
+  { id: 'penguin-bird',     label: 'Pingouin',     image: require('../../assets/images/tokens/penguin-bird.png') },
+  { id: 'pig',              label: 'Cochon',       image: require('../../assets/images/tokens/pig.png') },
+  { id: 'rabbit',           label: 'Lapin',        image: require('../../assets/images/tokens/rabbit.png') },
+  { id: 'raccoon',          label: 'Raton laveur', image: require('../../assets/images/tokens/raccoon.png') },
+  { id: 'shark',            label: 'Requin',       image: require('../../assets/images/tokens/shark.png') },
+  { id: 'sheep',            label: 'Mouton',       image: require('../../assets/images/tokens/sheep.png') },
+  { id: 'sloth',            label: 'Paresseux',    image: require('../../assets/images/tokens/sloth.png') },
+  { id: 'snake',            label: 'Serpent',      image: require('../../assets/images/tokens/snake.png') },
+  { id: 'spider',           label: 'Araignée',     image: require('../../assets/images/tokens/spider.png') },
+  { id: 'squirrel',         label: 'Écureuil',     image: require('../../assets/images/tokens/squirrel.png') },
+  { id: 'tiger',            label: 'Tigre',        image: require('../../assets/images/tokens/tiger.png') },
+  { id: 'wolf',             label: 'Loup',         image: require('../../assets/images/tokens/wolf.png') },
+];
+
 export const LobbyScreen = () => {
   const [mode, setMode] = useState<LobbyMode>('select');
+  const [tokenExpanded, setTokenExpanded] = useState(false);
+  const [expandedMode, setExpandedMode] = useState<'solo' | 'lan' | 'online' | null>('solo');
   const [hostIp, setHostIp] = useState<string>('');
   const [clientInputIp, setClientInputIp] = useState<string>('');
   // connectedClients lives in Zustand so it persists when LobbyScreen unmounts during game
@@ -149,11 +206,13 @@ export const LobbyScreen = () => {
       // Client: receive our assigned player ID from the host
       if (packet.type === 'ASSIGN_PLAYER_ID') {
         const { playerId } = packet.payload;
-        // Store our local player ID
         useGameStore.getState().setLocalPlayerId(playerId);
         
-        // Send our info to the host
+        // Register our stable playerId with the relay for reconnection
         const state = useGameStore.getState();
+        const rc = NetworkManager.getRoomCode();
+        if (rc) NetworkManager.registerPlayerId(rc, playerId);
+
         NetworkManager.sendMessage({
           type: 'SET_PLAYER_INFO',
           payload: { name: state.localPlayerName, avatar: state.localPlayerAvatar }
@@ -216,6 +275,17 @@ export const LobbyScreen = () => {
         if (prev.find(r => r.socketId === socketId)) return prev;
         return [...prev, { socketId, playerName, playerAvatar }];
       });
+    });
+
+    // Host: when a client reconnects, re-send the full state targeted to their new socket
+    NetworkManager.onPlayerRejoined((newSocketId, localPlayerId) => {
+      const state = useGameStore.getState();
+      const { players, board, currentPlayerIndex, turnPhase, consecutiveDoubles, lastDiceRoll, actionDeadline, lastEvent, winCondition, chronoEndTime } = state;
+      NetworkManager.sendTo(newSocketId, {
+        type: 'GAME_START',
+        payload: { players, board, currentPlayerIndex, turnPhase, consecutiveDoubles, lastDiceRoll, actionDeadline, lastEvent, winCondition, chronoEndTime }
+      });
+      console.log(`[Lobby] Re-synced state to rejoined player ${localPlayerId} (${newSocketId})`);
     });
 
     // We DO NOT close the server or disconnect on unmount, 
@@ -328,10 +398,10 @@ export const LobbyScreen = () => {
     
     // Broadcast GAME_START with full initial state to all connected clients
     const state = useGameStore.getState();
-    const { players, board, currentPlayerIndex, turnPhase, consecutiveDoubles, lastDiceRoll, actionDeadline, lastEvent } = state;
+    const { players, board, currentPlayerIndex, turnPhase, consecutiveDoubles, lastDiceRoll, actionDeadline, lastEvent, winCondition, chronoEndTime } = state;
     NetworkManager.broadcast({
       type: 'GAME_START',
-      payload: { players, board, currentPlayerIndex, turnPhase, consecutiveDoubles, lastDiceRoll, actionDeadline, lastEvent }
+      payload: { players, board, currentPlayerIndex, turnPhase, consecutiveDoubles, lastDiceRoll, actionDeadline, lastEvent, winCondition, chronoEndTime }
     });
     NetworkManager.notifyGameStart();
 
@@ -361,611 +431,696 @@ export const LobbyScreen = () => {
     setAppScreen('game'); 
   };
 
+  // ── Win condition sub-selector (shared) ──
+  const WinOptions = () => (
+    <View style={styles.winBlock}>
+      <Text style={styles.sectionLabel}>CONDITION DE VICTOIRE</Text>
+      <View style={styles.chipRow}>
+        {(['last_standing', 'fortune_limit', 'chrono'] as const).map(t => (
+          <TouchableOpacity
+            key={t}
+            style={[styles.chip, winCondition.type === t && styles.chipActive]}
+            onPress={() => setWinCondition(
+              t === 'fortune_limit' ? { type: 'fortune_limit', amount: 10000 }
+              : t === 'chrono' ? { type: 'chrono', durationMs: 30 * 60 * 1000 }
+              : { type: 'last_standing' }
+            )}
+          >
+            <Text style={[styles.chipText, winCondition.type === t && styles.chipTextActive]}>
+              {t === 'last_standing' ? '🏳 Dernier' : t === 'fortune_limit' ? '💰 Fortune' : '⏱ Chrono'}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+      {winCondition.type === 'fortune_limit' && (
+        <View style={styles.chipRow}>
+          {[5000, 10000, 20000, 50000].map(amt => (
+            <TouchableOpacity
+              key={amt}
+              style={[styles.chip, winCondition.amount === amt && styles.chipActive]}
+              onPress={() => setWinCondition({ type: 'fortune_limit', amount: amt })}
+            >
+              <Text style={[styles.chipText, winCondition.amount === amt && styles.chipTextActive]}>{(amt/1000).toFixed(0)}k AR</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      )}
+      {winCondition.type === 'chrono' && (
+        <View style={styles.chipRow}>
+          {[15, 30, 45, 60].map(min => (
+            <TouchableOpacity
+              key={min}
+              style={[styles.chip, winCondition.durationMs === min * 60000 && styles.chipActive]}
+              onPress={() => setWinCondition({ type: 'chrono', durationMs: min * 60000 })}
+            >
+              <Text style={[styles.chipText, winCondition.durationMs === min * 60000 && styles.chipTextActive]}>{min} min</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      )}
+    </View>
+  );
+
+  // ── Bot stepper (shared) ──
+  const BotStepper = ({ min, max }: { min: number; max: number }) => (
+    max > 0 ? (
+      <View style={styles.botRow}>
+        <Text style={styles.sectionLabel}>BOTS</Text>
+        <View style={styles.stepperInline}>
+          <TouchableOpacity style={[styles.stepBtn, botCount <= min && styles.stepBtnDisabled]} onPress={() => setBotCount(Math.max(min, botCount - 1))} disabled={botCount <= min}>
+            <Text style={styles.stepBtnText}>−</Text>
+          </TouchableOpacity>
+          <Text style={styles.stepVal}>{botCount}</Text>
+          <TouchableOpacity style={[styles.stepBtn, botCount >= max && styles.stepBtnDisabled]} onPress={() => setBotCount(Math.min(max, botCount + 1))} disabled={botCount >= max}>
+            <Text style={styles.stepBtnText}>+</Text>
+          </TouchableOpacity>
+        </View>
+        <Text style={styles.stepHint}>{1 + connectedClients.length + botCount} joueurs</Text>
+      </View>
+    ) : null
+  );
+
+  // Helper : résout l'image PNG d'un token ou retourne null (fallback emoji)
+  const getTokenImage = (avatar?: string) => TOKENS.find(t => t.id === avatar)?.image ?? null;
+
+  // ── Player slot card (shared) ──
+  const PlayerSlot = ({ avatar, name, role, waiting }: { avatar?: string; name?: string; role?: string; waiting?: boolean }) => {
+    const img = avatar ? getTokenImage(avatar) : null;
+    return (
+      <View style={waiting ? styles.playerSlotWaiting : styles.playerSlot}>
+        {waiting
+          ? <Text style={styles.slotAvatar}>⋯</Text>
+          : img
+            ? <Image source={img} style={styles.slotAvatarImage} />
+            : <Text style={styles.slotAvatar}>{avatar || '🎮'}</Text>
+        }
+        <View style={{ flex: 1 }}>
+          <Text style={styles.slotName}>{waiting ? 'En attente…' : name || 'Joueur'}</Text>
+          {!waiting && <Text style={styles.slotRole}>{role}</Text>}
+        </View>
+        {!waiting && (
+          <View style={styles.slotReady}>
+            <Text style={styles.slotReadyText}>✓</Text>
+          </View>
+        )}
+      </View>
+    );
+  };
+
   return (
     <SafeAreaView style={styles.container}>
-      {connectionError ? <Text style={styles.errorText}>{connectionError}</Text> : null}
 
+      {/* ════════════════════════ SELECT ════════════════════════ */}
       {mode === 'select' && (
         <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-          <Text style={styles.title}>MADAPOLY</Text>
+
+          {/* ── HEADER : Logo lemur + flag ── */}
+          <View style={styles.logoBlock}>
+            <View style={styles.logoStack}>
+              <Image
+                source={require('../../assets/images/flag-for-madagascar-svgrepo-com.png')}
+                style={styles.logoFlag}
+              />
+              <Image
+                source={require('../../assets/images/lemur-madagascar-svgrepo-com.png')}
+                style={styles.logoLemurImg}
+              />
+            </View>
+            <View style={styles.titleRow}>
+              <Text style={styles.titleMada}>MADA</Text>
+              <Text style={styles.titlePoly}>POLY</Text>
+            </View>
+            <Text style={styles.subtitle}>Édition Ariary Luxe</Text>
+          </View>
+
+          {connectionError ? <Text style={styles.errorText}>{connectionError}</Text> : null}
+
           <View style={styles.content}>
-            <Text style={styles.stepperLabel}>Votre Identité</Text>
-            <View style={styles.identityRow}>
+
+            {/* ── IDENTITÉ ── */}
+            <View style={styles.section}>
+              <Text style={styles.sectionLabel}>VOTRE IDENTITÉ</Text>
               <TextInput
                 style={styles.nameInput}
                 value={localPlayerName}
                 onChangeText={(t) => setLocalPlayerInfo(t, localPlayerAvatar)}
                 placeholder="Votre pseudo"
-                placeholderTextColor="#999"
+                placeholderTextColor={COLORS.textMuted}
                 maxLength={12}
               />
-            </View>
-            <View style={styles.avatarList}>
-              {AVATARS.map(a => (
-                <TouchableOpacity
-                  key={a}
-                  style={[styles.avatarBtn, localPlayerAvatar === a && styles.avatarBtnActive]}
-                  onPress={() => setLocalPlayerInfo(localPlayerName, a)}
-                >
-                  <Text style={styles.avatarEmoji}>{a}</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-
-            <View style={styles.divider} />
-            <Text style={styles.sectionTitle}>🏠  Solo</Text>
-
-            {/* Win condition selector */}
-            <Text style={styles.stepperLabel}>🏆 Condition de victoire</Text>
-            <View style={styles.winConditionRow}>
-              {(['last_standing', 'fortune_limit', 'chrono'] as const).map(t => (
-                <TouchableOpacity
-                  key={t}
-                  style={[styles.winConditionChip, winCondition.type === t && styles.winConditionChipActive]}
-                  onPress={() => setWinCondition(
-                    t === 'fortune_limit' ? { type: 'fortune_limit', amount: 10000 }
-                    : t === 'chrono' ? { type: 'chrono', durationMs: 30 * 60 * 1000 }
-                    : { type: 'last_standing' }
-                  )}
-                >
-                  <Text style={[styles.winConditionChipText, winCondition.type === t && styles.winConditionChipTextActive]}>
-                    {t === 'last_standing' ? '🏳️ Dernier' : t === 'fortune_limit' ? '💰 Fortune' : '⏱️ Chrono'}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-            {winCondition.type === 'fortune_limit' && (
-              <View style={styles.winConditionSub}>
-                <Text style={styles.stepperLabel}>Cible : {winCondition.amount.toLocaleString()} AR</Text>
-                <View style={styles.stepper}>
-                  {[5000, 10000, 20000, 50000].map(amt => (
-                    <TouchableOpacity
-                      key={amt}
-                      style={[styles.stepperButton, { paddingHorizontal: 10 }, winCondition.amount === amt && styles.stepperButtonActive]}
-                      onPress={() => setWinCondition({ type: 'fortune_limit', amount: amt })}
-                    >
-                      <Text style={styles.stepperButtonText}>{(amt / 1000).toFixed(0)}k</Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-              </View>
-            )}
-            {winCondition.type === 'chrono' && (
-              <View style={styles.winConditionSub}>
-                <Text style={styles.stepperLabel}>Durée : {winCondition.durationMs / 60000} min</Text>
-                <View style={styles.stepper}>
-                  {[15, 30, 45, 60].map(min => (
-                    <TouchableOpacity
-                      key={min}
-                      style={[styles.stepperButton, { paddingHorizontal: 10 }, winCondition.durationMs === min * 60000 && styles.stepperButtonActive]}
-                      onPress={() => setWinCondition({ type: 'chrono', durationMs: min * 60000 })}
-                    >
-                      <Text style={styles.stepperButtonText}>{min}m</Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-              </View>
-            )}
-
-            {/* Bot count selector */}
-            <Text style={styles.stepperLabel}>🤖 Nombre de Bots</Text>
-            <View style={styles.stepper}>
-              <TouchableOpacity
-                style={[styles.stepperButton, botCount <= 1 && styles.stepperButtonDisabled]}
-                onPress={() => setBotCount(Math.max(1, botCount - 1))}
-                disabled={botCount <= 1}
-              >
-                <Text style={styles.stepperButtonText}>−</Text>
-              </TouchableOpacity>
-              <Text style={styles.stepperValue}>{botCount}</Text>
-              <TouchableOpacity
-                style={[styles.stepperButton, botCount >= 3 && styles.stepperButtonDisabled]}
-                onPress={() => setBotCount(Math.min(3, botCount + 1))}
-                disabled={botCount >= 3}
-              >
-                <Text style={styles.stepperButtonText}>+</Text>
-              </TouchableOpacity>
-            </View>
-            <Text style={styles.stepperInfo}>{botCount + 1} joueurs au total</Text>
-
-            <TouchableOpacity style={styles.button} onPress={startSolo}>
-              <Text style={styles.buttonText}>Lancer la partie Solo</Text>
-            </TouchableOpacity>
-
-            {Platform.OS !== 'web' && (
-              <>
-                <View style={styles.divider} />
-                <Text style={styles.sectionTitle}>📶  Partie Locale (Wi-Fi)</Text>
-
-                <TouchableOpacity style={styles.button} onPress={handleHost}>
-                  <Text style={styles.buttonText}>Héberger (LAN)</Text>
-                </TouchableOpacity>
-
-                <TextInput
-                  style={styles.input}
-                  placeholder="Ex: 192.168.1.15"
-                  placeholderTextColor="#999"
-                  value={clientInputIp}
-                  onChangeText={setClientInputIp}
-                  keyboardType="numbers-and-punctuation"
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                />
-                <TouchableOpacity style={[styles.button, styles.buttonSecondary]} onPress={handleJoin} disabled={isConnecting}>
-                  {isConnecting ? <ActivityIndicator color="#FFF" /> : <Text style={styles.buttonText}>Rejoindre (LAN)</Text>}
-                </TouchableOpacity>
-              </>
-            )}
-
-            <View style={styles.divider} />
-            <Text style={styles.sectionTitle}>🌐  Jouer en Ligne</Text>
-
-            <TextInput
-              style={[styles.input, { marginBottom: 8 }]}
-              placeholder="Nom de la room (optionnel)"
-              placeholderTextColor="#999"
-              value={onlineRoomName}
-              onChangeText={setOnlineRoomName}
-              maxLength={32}
-              autoCorrect={false}
-            />
-            <TouchableOpacity style={[styles.button, styles.buttonOnline]} onPress={handleOnlineHost} disabled={isConnecting}>
-              {isConnecting ? <ActivityIndicator color="#FFF" /> : <Text style={styles.buttonText}>Créer une partie en ligne</Text>}
-            </TouchableOpacity>
-            {isConnecting && <Text style={styles.connectingHint}>Connexion au relay... (peut prendre ~30s la 1ère fois)</Text>}
-
-            <TextInput
-              style={styles.input}
-              placeholder="Code de room (ex: TANA-4892)"
-              placeholderTextColor="#999"
-              value={clientInputRoomCode}
-              onChangeText={setClientInputRoomCode}
-              autoCapitalize="characters"
-              autoCorrect={false}
-            />
-            <TouchableOpacity style={[styles.button, styles.buttonOnlineSecondary]} onPress={handleOnlineJoin} disabled={isConnecting}>
-              {isConnecting ? <ActivityIndicator color="#FFF" /> : <Text style={styles.buttonText}>Rejoindre en ligne</Text>}
-            </TouchableOpacity>
-
-            <View style={styles.divider} />
-            <View style={styles.liveRoomsHeader}>
-              <Text style={styles.sectionTitle}>👁  Parties en cours</Text>
-              <TouchableOpacity onPress={fetchLiveRooms} disabled={isFetchingRooms} style={styles.refreshButton}>
-                {isFetchingRooms ? <ActivityIndicator size="small" color={COLORS.primary} /> : <Text style={styles.refreshButtonText}>↻</Text>}
-              </TouchableOpacity>
-            </View>
-            {liveRooms.length === 0 ? (
-              <Text style={styles.connectingHint}>Appuie sur ↻ pour chercher des parties en cours</Text>
-            ) : (
-              liveRooms.map(room => (
-                <View key={room.roomCode} style={styles.liveRoomRow}>
-                  <View style={{ flex: 1, marginRight: 8 }}>
-                    {room.roomName ? (
-                      <Text style={styles.liveRoomName}>{room.roomName}</Text>
-                    ) : null}
-                    <Text style={styles.liveRoomCode}>{room.roomCode}</Text>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 }}>
-                      <View style={[styles.statusBadge, room.status === 'lobby' ? styles.statusBadgeLobby : styles.statusBadgePlaying]}>
-                        <Text style={styles.statusBadgeText}>{room.status === 'lobby' ? 'Lobby' : 'En cours'}</Text>
+              <View style={styles.tokenHeaderRow}>
+                <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  <Text style={styles.sectionLabel}>PION</Text>
+                  {localPlayerAvatar && (() => {
+                    const sel = TOKENS.find(t => t.id === localPlayerAvatar);
+                    return sel ? (
+                      <View style={styles.selectedTokenBadge}>
+                        <Image source={sel.image} style={{ width: 20, height: 20, resizeMode: 'contain' }} />
+                        <Text style={styles.selectedTokenName}>{sel.label}</Text>
                       </View>
-                      <Text style={styles.liveRoomMeta}>{room.playerCount} joueur{room.playerCount > 1 ? 's' : ''}{room.spectatorCount > 0 ? ` · ${room.spectatorCount} 👁` : ''}</Text>
+                    ) : null;
+                  })()}
+                </View>
+                <TouchableOpacity style={styles.tokenExpandBtn} onPress={() => setTokenExpanded(v => !v)}>
+                  <Text style={styles.tokenExpandBtnText}>{tokenExpanded ? '▲ Réduire' : '▼ Choisir'}</Text>
+                </TouchableOpacity>
+              </View>
+              {tokenExpanded && (
+                <View style={styles.tokenGrid}>
+                  {TOKENS.map(tok => (
+                    <TouchableOpacity
+                      key={tok.id}
+                      style={[styles.tokenBtn, localPlayerAvatar === tok.id && styles.tokenBtnActive]}
+                      onPress={() => { setLocalPlayerInfo(localPlayerName, tok.id); setTokenExpanded(false); }}
+                    >
+                      <Image source={tok.image} style={styles.tokenImage} />
+                      <Text style={styles.tokenLabel}>{tok.label}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              )}
+            </View>
+
+            {/* ── MODES ── */}
+            <View style={styles.section}>
+              <Text style={styles.sectionLabel}>MODE DE JEU</Text>
+              <View style={styles.modeCards}>
+
+                {/* SOLO */}
+                <View style={styles.modeCard}>
+                  <TouchableOpacity style={styles.modeCardHeader} onPress={() => setExpandedMode(expandedMode === 'solo' ? null : 'solo')} activeOpacity={0.8}>
+                    <Text style={styles.modeIcon}>🏠</Text>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.modeTitle}>Solo</Text>
+                      <Text style={styles.modeDesc}>Contre les bots</Text>
+                    </View>
+                    <Text style={styles.modeChevron}>{expandedMode === 'solo' ? '▲' : '▶'}</Text>
+                  </TouchableOpacity>
+                  {expandedMode === 'solo' && (
+                    <View style={styles.modeBody}>
+                      <WinOptions />
+                      <BotStepper min={1} max={3} />
+                      <TouchableOpacity style={styles.launchBtn} onPress={startSolo}>
+                        <Text style={styles.launchBtnText}>LANCER</Text>
+                      </TouchableOpacity>
+                    </View>
+                  )}
+                </View>
+
+                {/* LAN — mobile only */}
+                {Platform.OS !== 'web' && (
+                  <View style={styles.modeCard}>
+                    <TouchableOpacity style={styles.modeCardHeader} onPress={() => setExpandedMode(expandedMode === 'lan' ? null : 'lan')} activeOpacity={0.8}>
+                      <Text style={styles.modeIcon}>📶</Text>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.modeTitle}>Local Wi-Fi</Text>
+                        <Text style={styles.modeDesc}>Même réseau</Text>
+                      </View>
+                      <Text style={styles.modeChevron}>{expandedMode === 'lan' ? '▲' : '▶'}</Text>
+                    </TouchableOpacity>
+                    {expandedMode === 'lan' && (
+                      <View style={styles.modeBody}>
+                        <TouchableOpacity style={styles.launchBtn} onPress={handleHost}>
+                          <Text style={styles.launchBtnText}>HÉBERGER</Text>
+                        </TouchableOpacity>
+                        <View style={styles.separator} />
+                        <TextInput
+                          style={styles.codeInput}
+                          placeholder="192.168.1.15"
+                          placeholderTextColor={COLORS.textMuted}
+                          value={clientInputIp}
+                          onChangeText={setClientInputIp}
+                          keyboardType="numbers-and-punctuation"
+                          autoCapitalize="none"
+                          autoCorrect={false}
+                        />
+                        <TouchableOpacity style={[styles.launchBtn, styles.launchBtnSecondary]} onPress={handleJoin} disabled={isConnecting}>
+                          {isConnecting ? <ActivityIndicator color="#FFF" size="small" /> : <Text style={styles.launchBtnText}>REJOINDRE</Text>}
+                        </TouchableOpacity>
+                      </View>
+                    )}
+                  </View>
+                )}
+
+                {/* EN LIGNE */}
+                <View style={styles.modeCard}>
+                  <TouchableOpacity style={styles.modeCardHeader} onPress={() => setExpandedMode(expandedMode === 'online' ? null : 'online')} activeOpacity={0.8}>
+                    <Text style={styles.modeIcon}>🌐</Text>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.modeTitle}>En Ligne</Text>
+                      <Text style={styles.modeDesc}>Partout dans le monde</Text>
+                    </View>
+                    <Text style={styles.modeChevron}>{expandedMode === 'online' ? '▲' : '▶'}</Text>
+                  </TouchableOpacity>
+                  {expandedMode === 'online' && (
+                    <View style={styles.modeBody}>
+                      <TextInput
+                        style={styles.codeInput}
+                        placeholder="Nom de la room (optionnel)"
+                        placeholderTextColor={COLORS.textMuted}
+                        value={onlineRoomName}
+                        onChangeText={setOnlineRoomName}
+                        maxLength={32}
+                        autoCorrect={false}
+                      />
+                      <WinOptions />
+                      <TouchableOpacity style={styles.launchBtn} onPress={handleOnlineHost} disabled={isConnecting}>
+                        {isConnecting ? <ActivityIndicator color="#FFF" size="small" /> : <Text style={styles.launchBtnText}>CRÉER</Text>}
+                      </TouchableOpacity>
+                      {isConnecting && <Text style={styles.hintText}>Connexion au serveur… (~30s la 1ère fois)</Text>}
+                      <View style={styles.separator} />
+                      <TextInput
+                        style={styles.codeInput}
+                        placeholder="Code (ex: TANA-4892)"
+                        placeholderTextColor={COLORS.textMuted}
+                        value={clientInputRoomCode}
+                        onChangeText={setClientInputRoomCode}
+                        autoCapitalize="characters"
+                        autoCorrect={false}
+                      />
+                      <TouchableOpacity style={[styles.launchBtn, styles.launchBtnSecondary]} onPress={handleOnlineJoin} disabled={isConnecting}>
+                        {isConnecting ? <ActivityIndicator color="#FFF" size="small" /> : <Text style={styles.launchBtnText}>REJOINDRE</Text>}
+                      </TouchableOpacity>
+                    </View>
+                  )}
+                </View>
+
+              </View>
+            </View>
+
+            {/* ── PARTIES EN COURS ── */}
+            <View style={styles.section}>
+              <View style={styles.liveHeader}>
+                <Text style={styles.sectionLabel}>PARTIES EN COURS</Text>
+                <TouchableOpacity onPress={fetchLiveRooms} disabled={isFetchingRooms} style={styles.refreshBtn}>
+                  {isFetchingRooms
+                    ? <ActivityIndicator size="small" color={COLORS.primary} />
+                    : <Text style={styles.refreshBtnText}>↻</Text>}
+                </TouchableOpacity>
+              </View>
+              {liveRooms.length === 0 ? (
+                <Text style={styles.hintText}>Aucune partie en cours</Text>
+              ) : liveRooms.map(room => (
+                <View key={room.roomCode} style={styles.liveRow}>
+                  <View style={{ flex: 1, gap: 2 }}>
+                    {room.roomName ? <Text style={styles.liveRoomName}>{room.roomName}</Text> : null}
+                    <Text style={styles.liveCode}>{room.roomCode}</Text>
+                    <View style={{ flexDirection: 'row', gap: 6, alignItems: 'center', marginTop: 2 }}>
+                      <View style={[styles.badge, room.status === 'lobby' ? styles.badgeLobby : styles.badgePlaying]}>
+                        <Text style={styles.badgeText}>{room.status === 'lobby' ? 'Lobby' : 'En cours'}</Text>
+                      </View>
+                      <Text style={styles.liveMeta}>{room.playerCount} joueur{room.playerCount > 1 ? 's' : ''}</Text>
                     </View>
                   </View>
-                  <View style={{ flexDirection: 'column', gap: 4, alignItems: 'flex-end' }}>
+                  <View style={{ gap: 6, alignItems: 'flex-end' }}>
                     {room.status === 'lobby' && (
-                      <TouchableOpacity
-                        style={styles.joinLiveButton}
-                        disabled={isConnecting}
-                        onPress={async () => {
-                          setClientInputRoomCode(room.roomCode);
-                          setIsConnecting(true);
-                          setConnectionError('En attente d\'approbation de l\'hôte...');
-                          NetworkManager.setTransport('websocket', RELAY_URL);
-                          try {
-                            await NetworkManager.joinRoom(room.roomCode, localPlayerName, localPlayerAvatar);
-                            setMode('online_client');
-                            setNetworkRole('client', 'client-' + Date.now());
-                            setConnectionError('');
-                          } catch (e: any) {
-                            setConnectionError(e?.message || 'Connexion impossible.');
-                            NetworkManager.setTransport('tcp');
-                          } finally {
-                            setIsConnecting(false);
-                          }
-                        }}
-                      >
-                        <Text style={styles.joinLiveButtonText}>Rejoindre</Text>
+                      <TouchableOpacity style={styles.joinBtn} disabled={isConnecting} onPress={async () => {
+                        setClientInputRoomCode(room.roomCode);
+                        setIsConnecting(true);
+                        setConnectionError('En attente d\'approbation de l\'hôte...');
+                        NetworkManager.setTransport('websocket', RELAY_URL);
+                        try {
+                          await NetworkManager.joinRoom(room.roomCode, localPlayerName, localPlayerAvatar);
+                          setMode('online_client');
+                          setNetworkRole('client', 'client-' + Date.now());
+                          setConnectionError('');
+                        } catch (e: any) {
+                          setConnectionError(e?.message || 'Connexion impossible.');
+                          NetworkManager.setTransport('tcp');
+                        } finally { setIsConnecting(false); }
+                      }}>
+                        <Text style={styles.joinBtnText}>Rejoindre</Text>
                       </TouchableOpacity>
                     )}
-                    <TouchableOpacity style={styles.watchButton} onPress={() => handleWatch(room.roomCode)} disabled={isConnecting}>
-                      <Text style={styles.watchButtonText}>👁 Regarder</Text>
+                    <TouchableOpacity style={styles.watchBtn} onPress={() => handleWatch(room.roomCode)} disabled={isConnecting}>
+                      <Text style={styles.watchBtnText}>👁 Regarder</Text>
                     </TouchableOpacity>
                   </View>
                 </View>
-              ))
-            )}
+              ))}
+            </View>
+
           </View>
         </ScrollView>
       )}
 
+      {/* ════════════════════════ HOST (LAN) ════════════════════════ */}
       {mode === 'host' && (
-        <View style={styles.centeredContent}>
-          <Text style={styles.title}>MADAPOLY</Text>
-          <View style={styles.content}>
-          <Text style={styles.subtitle}>Votre adresse IP :</Text>
-          <Text style={styles.ipText}>{hostIp || 'Chargement...'}</Text>
-          
-          <Text style={styles.subtitle}>Joueurs connectés : {connectedClients.length}</Text>
-          <View style={styles.playerCardsList}>
-            {/* Host card (always first) */}
-            <View style={styles.playerCardItem}>
-              <Text style={styles.playerCardAvatar}>{localPlayerAvatar || '🎩'}</Text>
-              <View style={styles.playerCardInfo}>
-                <Text style={styles.playerCardName}>{localPlayerName || 'Hôte'}</Text>
-                <Text style={styles.playerCardRole}>Hôte</Text>
-              </View>
-              <View style={styles.playerCardReady}>
-                <Text style={styles.playerCardReadyText}>✓</Text>
-              </View>
-            </View>
-            {connectedClients.length === 0 ? (
-              <View style={styles.waitingSlot}>
-                <Text style={styles.waitingSlotText}>En attente de joueurs...</Text>
-              </View>
-            ) : (
-              connectedClients.map((c, i) => (
-                <View key={c.socketId} style={styles.playerCardItem}>
-                  <Text style={styles.playerCardAvatar}>{c.avatar || '🎮'}</Text>
-                  <View style={styles.playerCardInfo}>
-                    <Text style={styles.playerCardName}>{c.name || `Joueur ${i + 2}`}</Text>
-                    <Text style={styles.playerCardRole}>Client</Text>
-                  </View>
-                  <View style={styles.playerCardReady}>
-                    <Text style={styles.playerCardReadyText}>✓</Text>
-                  </View>
-                </View>
-              ))
-            )}
+        <View style={styles.pageCenter}>
+          <View style={styles.titleRowSmall}>
+            <Text style={styles.titleMada}>MADA</Text>
+            <Text style={styles.titlePoly}>POLY</Text>
           </View>
-
-          {/* Bot count selector for host */}
-          {maxBotsForHost > 0 && (
-            <>
-              <Text style={[styles.stepperLabel, { marginTop: 20 }]}>🤖 Bots supplémentaires</Text>
-              <View style={styles.stepper}>
-                <TouchableOpacity
-                  style={[styles.stepperButton, botCount <= minBotsForHost && styles.stepperButtonDisabled]}
-                  onPress={() => setBotCount(Math.max(minBotsForHost, botCount - 1))}
-                  disabled={botCount <= minBotsForHost}
-                >
-                  <Text style={styles.stepperButtonText}>−</Text>
-                </TouchableOpacity>
-                <Text style={styles.stepperValue}>{botCount}</Text>
-                <TouchableOpacity
-                  style={[styles.stepperButton, botCount >= maxBotsForHost && styles.stepperButtonDisabled]}
-                  onPress={() => setBotCount(Math.min(maxBotsForHost, botCount + 1))}
-                  disabled={botCount >= maxBotsForHost}
-                >
-                  <Text style={styles.stepperButtonText}>+</Text>
-                </TouchableOpacity>
-              </View>
-              <Text style={styles.stepperInfo}>{1 + connectedClients.length + botCount} joueurs au total</Text>
-            </>
-          )}
-          
-          <TouchableOpacity 
-            style={[styles.button, { marginTop: 40 }]} 
-            onPress={startGame}
-          >
-            <Text style={styles.buttonText}>
-              {connectedClients.length === 0 ? 'Lancer avec des Bots' : 'Lancer la partie'}
-            </Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity style={styles.buttonTextOnly} onPress={() => { NetworkManager.closeServer(); setMode('select'); }}>
-            <Text style={styles.linkText}>Annuler</Text>
-          </TouchableOpacity>
+          <View style={styles.content}>
+            <Text style={styles.pageTitle}>Héberger — LAN</Text>
+            <Text style={styles.ipText}>{hostIp || '…'}</Text>
+            <Text style={styles.hintText}>Partagez cette IP avec vos amis</Text>
+            <View style={styles.playerCardsList}>
+              <PlayerSlot avatar={localPlayerAvatar} name={localPlayerName} role="Hôte 👑" />
+              {connectedClients.length === 0
+                ? <PlayerSlot waiting />
+                : connectedClients.map((c, i) => <PlayerSlot key={c.socketId} avatar={c.avatar} name={c.name || `Joueur ${i+2}`} role="Client" />)}
+            </View>
+            <BotStepper min={Math.max(0, 2 - 1 - connectedClients.length)} max={4 - 1 - connectedClients.length} />
+            <TouchableOpacity style={[styles.launchBtn, { marginTop: 24, width: '100%' }]} onPress={startGame}>
+              <Text style={styles.launchBtnText}>{connectedClients.length === 0 ? 'LANCER AVEC BOTS' : 'LANCER'}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.cancelLink} onPress={() => { NetworkManager.closeServer(); setMode('select'); }}>
+              <Text style={styles.cancelText}>Annuler</Text>
+            </TouchableOpacity>
           </View>
         </View>
       )}
 
+      {/* ════════════════════════ CLIENT (LAN) ════════════════════════ */}
       {mode === 'client' && (
-        <View style={styles.centeredContent}>
-          <Text style={styles.title}>MADAPOLY</Text>
-          <View style={styles.content}>
-          <Text style={styles.subtitle}>Connecté à {clientInputIp}</Text>
-          <View style={[styles.playerCardItem, { marginTop: 30, width: '100%' }]}>
-            <Text style={styles.playerCardAvatar}>{localPlayerAvatar || '🎮'}</Text>
-            <View style={styles.playerCardInfo}>
-              <Text style={styles.playerCardName}>{localPlayerName || 'Vous'}</Text>
-              <Text style={styles.playerCardRole}>Connecté ✓</Text>
-            </View>
+        <View style={styles.pageCenter}>
+          <View style={styles.titleRowSmall}>
+            <Text style={styles.titleMada}>MADA</Text>
+            <Text style={styles.titlePoly}>POLY</Text>
           </View>
-          <ActivityIndicator size="large" color={COLORS.primary} style={{ marginTop: 30 }} />
-          <Text style={styles.waitText}>En attente de l'hôte pour commencer...</Text>
-
-          <TouchableOpacity style={[styles.buttonTextOnly, { marginTop: 40 }]} onPress={() => { NetworkManager.disconnect(); setMode('select'); }}>
-            <Text style={styles.linkText}>Quitter</Text>
-          </TouchableOpacity>
+          <View style={styles.content}>
+            <Text style={styles.pageTitle}>Connecté à {clientInputIp}</Text>
+            <PlayerSlot avatar={localPlayerAvatar} name={localPlayerName} role="Connecté ✓" />
+            <ActivityIndicator size="large" color={COLORS.primary} style={{ marginVertical: 30 }} />
+            <Text style={styles.waitText}>En attente de l'hôte…</Text>
+            <TouchableOpacity style={styles.cancelLink} onPress={() => { NetworkManager.disconnect(); setMode('select'); }}>
+              <Text style={styles.cancelText}>Quitter</Text>
+            </TouchableOpacity>
           </View>
         </View>
       )}
 
-      {/* ── ONLINE HOST VIEW ── */}
+      {/* ════════════════════════ ONLINE HOST ════════════════════════ */}
       {mode === 'online_host' && (
-        <View style={styles.centeredContent}>
-          <Text style={styles.title}>MADAPOLY</Text>
+        <ScrollView contentContainerStyle={styles.pageScrollCenter}>
+          <View style={styles.titleRowSmall}>
+            <Text style={styles.titleMada}>MADA</Text>
+            <Text style={styles.titlePoly}>POLY</Text>
+          </View>
           <View style={styles.content}>
-          {onlineRoomName.trim() ? (
-            <Text style={styles.roomNameDisplay}>"{onlineRoomName.trim()}"</Text>
-          ) : null}
-          <Text style={styles.subtitle}>Code de la room :</Text>
-          <Text style={styles.roomCodeText}>{roomCode}</Text>
-          <TouchableOpacity style={styles.copyButton} onPress={handleCopyRoomCode}>
-            <Text style={styles.copyButtonText}>{roomCodeCopied ? '✓ Copié !' : 'Copier le code'}</Text>
-          </TouchableOpacity>
-          <Text style={styles.waitText}>Partagez ce code avec vos amis</Text>
+            {onlineRoomName.trim() ? <Text style={styles.roomNameBadge}>"{onlineRoomName.trim()}"</Text> : null}
+            <Text style={styles.sectionLabel}>CODE DE LA ROOM</Text>
+            <Text style={styles.roomCode}>{roomCode}</Text>
+            <TouchableOpacity style={styles.copyBtn} onPress={handleCopyRoomCode}>
+              <Text style={styles.copyBtnText}>{roomCodeCopied ? '✓ Copié !' : 'Copier'}</Text>
+            </TouchableOpacity>
+            <Text style={styles.hintText}>Partagez ce code avec vos amis</Text>
 
-          <Text style={[styles.subtitle, { marginTop: 30 }]}>Joueurs connectés : {connectedClients.length}</Text>
-          <View style={styles.playerCardsList}>
-            {/* Host card */}
-            <View style={styles.playerCardItem}>
-              <Text style={styles.playerCardAvatar}>{localPlayerAvatar || '🎩'}</Text>
-              <View style={styles.playerCardInfo}>
-                <Text style={styles.playerCardName}>{localPlayerName || 'Hôte'}</Text>
-                <Text style={styles.playerCardRole}>Hôte 👑</Text>
-              </View>
-              <View style={styles.playerCardReady}>
-                <Text style={styles.playerCardReadyText}>✓</Text>
-              </View>
+            <Text style={[styles.sectionLabel, { marginTop: 20 }]}>JOUEURS</Text>
+            <View style={styles.playerCardsList}>
+              <PlayerSlot avatar={localPlayerAvatar} name={localPlayerName} role="Hôte 👑" />
+              {connectedClients.length === 0
+                ? <PlayerSlot waiting />
+                : connectedClients.map((c, i) => <PlayerSlot key={c.socketId} avatar={c.avatar} name={c.name || `Joueur ${i+2}`} role="En ligne" />)}
             </View>
-            {connectedClients.length === 0 ? (
-              <View style={styles.waitingSlot}>
-                <ActivityIndicator size="small" color={COLORS.primary} style={{ marginRight: 10 }} />
-                <Text style={styles.waitingSlotText}>En attente de joueurs...</Text>
+
+            <BotStepper min={Math.max(0, 2 - 1 - connectedClients.length)} max={4 - 1 - connectedClients.length} />
+
+            {pendingRequests.length > 0 && (
+              <View style={styles.pendingBlock}>
+                <Text style={styles.pendingTitle}>Demandes en attente</Text>
+                {pendingRequests.map(req => (
+                  <View key={req.socketId} style={styles.pendingRow}>
+                    <Text style={styles.pendingAvatar}>{req.playerAvatar}</Text>
+                    <Text style={styles.pendingName}>{req.playerName}</Text>
+                    <TouchableOpacity style={styles.approveBtn} onPress={() => handleApprove(req.socketId)}>
+                      <Text style={styles.approveBtnText}>✓</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={styles.rejectBtn} onPress={() => handleReject(req.socketId)}>
+                      <Text style={styles.rejectBtnText}>✕</Text>
+                    </TouchableOpacity>
+                  </View>
+                ))}
               </View>
-            ) : (
-              connectedClients.map((c, i) => (
-                <View key={c.socketId} style={styles.playerCardItem}>
-                  <Text style={styles.playerCardAvatar}>{c.avatar || '🎮'}</Text>
-                  <View style={styles.playerCardInfo}>
-                    <Text style={styles.playerCardName}>{c.name || `Joueur ${i + 2}`}</Text>
-                    <Text style={styles.playerCardRole}>En ligne</Text>
-                  </View>
-                  <View style={styles.playerCardReady}>
-                    <Text style={styles.playerCardReadyText}>✓</Text>
-                  </View>
-                </View>
-              ))
             )}
+
+            <TouchableOpacity style={[styles.launchBtn, { marginTop: 24, width: '100%' }]} onPress={startGame}>
+              <Text style={styles.launchBtnText}>{connectedClients.length === 0 ? 'LANCER AVEC BOTS' : 'LANCER'}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.cancelLink} onPress={() => { NetworkManager.cleanup(); setConnectedClients([]); setRoomCode(''); setMode('select'); }}>
+              <Text style={styles.cancelText}>Annuler</Text>
+            </TouchableOpacity>
           </View>
-
-          {maxBotsForHost > 0 && (
-            <>
-              <Text style={[styles.stepperLabel, { marginTop: 20 }]}>🤖 Bots supplémentaires</Text>
-              <View style={styles.stepper}>
-                <TouchableOpacity
-                  style={[styles.stepperButton, botCount <= minBotsForHost && styles.stepperButtonDisabled]}
-                  onPress={() => setBotCount(Math.max(minBotsForHost, botCount - 1))}
-                  disabled={botCount <= minBotsForHost}
-                >
-                  <Text style={styles.stepperButtonText}>−</Text>
-                </TouchableOpacity>
-                <Text style={styles.stepperValue}>{botCount}</Text>
-                <TouchableOpacity
-                  style={[styles.stepperButton, botCount >= maxBotsForHost && styles.stepperButtonDisabled]}
-                  onPress={() => setBotCount(Math.min(maxBotsForHost, botCount + 1))}
-                  disabled={botCount >= maxBotsForHost}
-                >
-                  <Text style={styles.stepperButtonText}>+</Text>
-                </TouchableOpacity>
-              </View>
-              <Text style={styles.stepperInfo}>{1 + connectedClients.length + botCount} joueurs au total</Text>
-            </>
-          )}
-
-          {pendingRequests.length > 0 && (
-            <View style={styles.pendingSection}>
-              <Text style={styles.pendingSectionTitle}>Demandes de rejoindre</Text>
-              {pendingRequests.map(req => (
-                <View key={req.socketId} style={styles.pendingRow}>
-                  <Text style={styles.pendingAvatar}>{req.playerAvatar}</Text>
-                  <Text style={styles.pendingName}>{req.playerName}</Text>
-                  <TouchableOpacity style={styles.approveButton} onPress={() => handleApprove(req.socketId)}>
-                    <Text style={styles.approveButtonText}>✓</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity style={styles.rejectButton} onPress={() => handleReject(req.socketId)}>
-                    <Text style={styles.rejectButtonText}>✕</Text>
-                  </TouchableOpacity>
-                </View>
-              ))}
-            </View>
-          )}
-
-          <TouchableOpacity
-            style={[styles.button, styles.buttonOnline, { marginTop: 30 }]}
-            onPress={startGame}
-          >
-            <Text style={styles.buttonText}>
-              {connectedClients.length === 0 ? 'Lancer avec des Bots' : 'Lancer la partie'}
-            </Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity style={styles.buttonTextOnly} onPress={() => { NetworkManager.cleanup(); setConnectedClients([]); setRoomCode(''); setMode('select'); }}>
-            <Text style={styles.linkText}>Annuler</Text>
-          </TouchableOpacity>
-          </View>
-        </View>
+        </ScrollView>
       )}
 
-      {/* ── ONLINE CLIENT VIEW ── */}
+      {/* ════════════════════════ ONLINE CLIENT ════════════════════════ */}
       {mode === 'online_client' && (
-        <View style={styles.centeredContent}>
-          <Text style={styles.title}>MADAPOLY</Text>
-          <View style={styles.content}>
-          <Text style={styles.subtitle}>🌐 Connecté à la room</Text>
-          <Text style={styles.roomCodeText}>{clientInputRoomCode.toUpperCase()}</Text>
-          <View style={[styles.playerCardItem, { marginTop: 10, width: '100%' }]}>
-            <Text style={styles.playerCardAvatar}>{localPlayerAvatar || '🎮'}</Text>
-            <View style={styles.playerCardInfo}>
-              <Text style={styles.playerCardName}>{localPlayerName || 'Vous'}</Text>
-              <Text style={styles.playerCardRole}>Connecté ✓</Text>
-            </View>
+        <View style={styles.pageCenter}>
+          <View style={styles.titleRowSmall}>
+            <Text style={styles.titleMada}>MADA</Text>
+            <Text style={styles.titlePoly}>POLY</Text>
           </View>
-          <ActivityIndicator size="large" color={COLORS.primary} style={{ marginTop: 20 }} />
-          <Text style={styles.waitText}>En attente de l'hôte pour commencer...</Text>
-
-          <TouchableOpacity style={[styles.buttonTextOnly, { marginTop: 40 }]} onPress={() => { NetworkManager.cleanup(); setMode('select'); }}>
-            <Text style={styles.linkText}>Quitter</Text>
-          </TouchableOpacity>
+          <View style={styles.content}>
+            <Text style={styles.sectionLabel}>ROOM</Text>
+            <Text style={styles.roomCode}>{clientInputRoomCode.toUpperCase()}</Text>
+            <PlayerSlot avatar={localPlayerAvatar} name={localPlayerName} role="Connecté ✓" />
+            <ActivityIndicator size="large" color={COLORS.primary} style={{ marginVertical: 30 }} />
+            <Text style={styles.waitText}>En attente de l'hôte…</Text>
+            <TouchableOpacity style={styles.cancelLink} onPress={() => { NetworkManager.cleanup(); setMode('select'); }}>
+              <Text style={styles.cancelText}>Quitter</Text>
+            </TouchableOpacity>
           </View>
         </View>
       )}
+
     </SafeAreaView>
   );
 };
 
+// ─────────────────────────────────────────
+// STYLES — Night theme, game-menu aesthetic
+// ─────────────────────────────────────────
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
-  scrollContent: { flexGrow: 1, justifyContent: 'center', alignItems: 'center', paddingVertical: 40 },
-  title: { fontSize: 42, fontFamily: 'Inter_900Black', color: COLORS.primary, marginBottom: 30 },
-  sectionTitle: { fontSize: 16, fontFamily: 'Inter_700Bold', color: COLORS.textSecondary, marginBottom: 12, alignSelf: 'flex-start' },
-  badge: { fontSize: 14, fontFamily: 'Inter_700Bold', color: '#FFF', backgroundColor: '#333', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 12, overflow: 'hidden', marginBottom: 40 },
-  subtitle: { fontSize: 18, fontFamily: 'Inter_700Bold', color: '#FFF', marginTop: 20 },
-  content: { width: '85%', alignItems: 'center' },
+  scrollContent: { flexGrow: 1, alignItems: 'center', paddingBottom: 60 },
+  content: { width: '90%', maxWidth: 480, alignItems: 'center' },
+  pageCenter: { flex: 1, justifyContent: 'center', alignItems: 'center', width: '100%' },
+  pageScrollCenter: { flexGrow: 1, alignItems: 'center', paddingVertical: 40 },
+
+  // ── Logo Header ──
+  logoBlock: { alignItems: 'center', paddingTop: 40, paddingBottom: 20 },
+  logoStack: { width: 110, height: 110, alignItems: 'center', justifyContent: 'center', marginBottom: 8 },
+  logoFlag: { position: 'absolute', width: 110, height: 110, resizeMode: 'contain', opacity: 0.35 },
+  logoLemurImg: { width: 90, height: 90, resizeMode: 'contain' },
+  titleRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 0 },
+  titleRowSmall: { flexDirection: 'row', alignItems: 'flex-end', marginBottom: 20 },
+  titleMada: { fontSize: 42, fontFamily: 'Inter_900Black', color: COLORS.madaWhite, letterSpacing: 2 },
+  titlePoly: { fontSize: 42, fontFamily: 'Inter_900Black', color: COLORS.madaRed, letterSpacing: 2 },
+  subtitle: { fontSize: 12, fontFamily: 'Inter_700Bold', color: COLORS.madaGreen, letterSpacing: 3, marginTop: 3, textTransform: 'uppercase' },
+
+  // ── Section ──
+  section: { width: '100%', marginBottom: 16 },
+  sectionLabel: { fontSize: 10, fontFamily: 'Inter_700Bold', color: COLORS.textMuted, letterSpacing: 2, marginBottom: 8, textTransform: 'uppercase' },
+
+  // ── Identity ──
+  nameInput: {
+    width: '100%', backgroundColor: COLORS.surface,
+    borderRadius: 12, paddingHorizontal: 16, paddingVertical: 13,
+    fontFamily: 'Inter_700Bold', fontSize: 16, color: COLORS.text,
+    borderWidth: 1, borderColor: COLORS.surfaceBorder, marginBottom: 12,
+  },
+  tokenHeaderRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 },
+  selectedTokenBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: COLORS.surface, borderRadius: 8, paddingHorizontal: 8, paddingVertical: 4, borderWidth: 1, borderColor: COLORS.madaGreen },
+  selectedTokenName: { fontSize: 11, fontFamily: 'Inter_700Bold', color: COLORS.madaGreen },
+  tokenExpandBtn: { backgroundColor: COLORS.madaGreen, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 5 },
+  tokenExpandBtnText: { fontSize: 11, fontFamily: 'Inter_700Bold', color: '#FFF' },
+  tokenGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 8 },
+  tokenBtn: {
+    width: 60, alignItems: 'center', paddingVertical: 7,
+    borderRadius: 10, backgroundColor: COLORS.surface,
+    borderWidth: 1.5, borderColor: COLORS.surfaceBorder,
+  },
+  tokenBtnActive: { borderColor: COLORS.madaGreen, backgroundColor: 'rgba(0,122,61,0.15)' },
+  tokenEmoji: { fontSize: 26 },
+  tokenImage: { width: 34, height: 34, resizeMode: 'contain' },
+  tokenLabel: { fontSize: 8, fontFamily: 'Inter_700Bold', color: COLORS.textSecondary, marginTop: 3, textAlign: 'center' },
+
+  // ── Mode Cards ──
+  modeCards: { gap: 10 },
+  modeCard: {
+    backgroundColor: COLORS.surface,
+    borderRadius: 16,
+    borderWidth: 1, borderColor: COLORS.surfaceBorder,
+    overflow: 'hidden',
+  },
+  modeCardHeader: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 16 },
+  modeBody: { paddingHorizontal: 16, paddingBottom: 16, borderTopWidth: 1, borderTopColor: COLORS.surfaceBorder },
+  modeIcon: { fontSize: 26 },
+  modeTitle: { fontSize: 17, fontFamily: 'Inter_900Black', color: COLORS.text },
+  modeDesc: { fontSize: 11, fontFamily: 'Inter_400Regular', color: COLORS.textSecondary, marginTop: 1 },
+  modeChevron: { fontSize: 12, color: COLORS.textMuted, marginLeft: 4 },
+
+  // ── Win condition block ──
+  winBlock: { marginTop: 12, marginBottom: 8 },
+  chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 6 },
+  chip: {
+    paddingHorizontal: 11, paddingVertical: 6, borderRadius: 20,
+    backgroundColor: COLORS.surfaceAlt, borderWidth: 1, borderColor: COLORS.surfaceBorder,
+  },
+  chipActive: { backgroundColor: 'rgba(0,122,61,0.2)', borderColor: COLORS.madaGreen },
+  chipText: { fontSize: 12, fontFamily: 'Inter_700Bold', color: COLORS.textSecondary },
+  chipTextActive: { color: COLORS.madaGreen },
+
+  // ── Bot row ──
+  botRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 12, flexWrap: 'wrap' },
+  stepperInline: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  stepBtn: { width: 32, height: 32, borderRadius: 16, backgroundColor: COLORS.madaGreen, justifyContent: 'center', alignItems: 'center' },
+  stepBtnDisabled: { backgroundColor: COLORS.surfaceBorder },
+  stepBtnText: { color: '#FFF', fontSize: 18, fontFamily: 'Inter_900Black' },
+  stepVal: { color: COLORS.text, fontSize: 20, fontFamily: 'Inter_900Black', minWidth: 26, textAlign: 'center' },
+  stepHint: { color: COLORS.textMuted, fontSize: 11, fontFamily: 'Inter_400Regular' },
+
+  // ── Launch button ──
+  launchBtn: {
+    width: '100%', paddingVertical: 13, borderRadius: 12,
+    backgroundColor: COLORS.madaGreen, alignItems: 'center',
+    shadowColor: COLORS.madaGreen, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.35, shadowRadius: 8, elevation: 5,
+  },
+  launchBtnSecondary: { backgroundColor: COLORS.madaRed, shadowColor: COLORS.madaRed },
+  launchBtnText: { color: '#FFF', fontFamily: 'Inter_900Black', fontSize: 14, letterSpacing: 2 },
+
+  separator: { height: 1, backgroundColor: COLORS.surfaceBorder, marginVertical: 14 },
+  codeInput: {
+    width: '100%', backgroundColor: COLORS.surfaceAlt,
+    borderRadius: 10, paddingHorizontal: 14, paddingVertical: 11,
+    fontFamily: 'Inter_700Bold', fontSize: 15, color: COLORS.text,
+    borderWidth: 1, borderColor: COLORS.surfaceBorder, marginBottom: 10,
+    textAlign: 'center', letterSpacing: 1,
+  },
+
+  // ── Live rooms ──
+  liveHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 },
+  refreshBtn: { padding: 6 },
+  refreshBtnText: { color: COLORS.primary, fontSize: 22, fontFamily: 'Inter_700Bold' },
+  liveRow: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    backgroundColor: COLORS.surface, borderRadius: 12,
+    paddingHorizontal: 14, paddingVertical: 12, marginBottom: 8,
+    borderWidth: 1, borderColor: COLORS.surfaceBorder,
+  },
+  liveRoomName: { color: COLORS.text, fontFamily: 'Inter_700Bold', fontSize: 14 },
+  liveCode: { color: COLORS.textSecondary, fontFamily: 'Inter_700Bold', fontSize: 13, letterSpacing: 1 },
+  liveMeta: { color: COLORS.textMuted, fontFamily: 'Inter_400Regular', fontSize: 11 },
+  badge: { borderRadius: 6, paddingHorizontal: 7, paddingVertical: 2 },
+  badgeLobby: { backgroundColor: 'rgba(34,197,94,0.2)' },
+  badgePlaying: { backgroundColor: 'rgba(239,68,68,0.2)' },
+  badgeText: { color: COLORS.text, fontFamily: 'Inter_400Regular', fontSize: 10 },
+  joinBtn: { backgroundColor: COLORS.success, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 6 },
+  joinBtnText: { color: '#FFF', fontFamily: 'Inter_700Bold', fontSize: 12 },
+  watchBtn: { backgroundColor: COLORS.surfaceAlt, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 6, borderWidth: 1, borderColor: COLORS.surfaceBorder },
+  watchBtnText: { color: COLORS.textSecondary, fontFamily: 'Inter_700Bold', fontSize: 12 },
+
+  // ── Inner game pages (host/client/waiting) ──
+  pageTitle: { fontSize: 22, fontFamily: 'Inter_900Black', color: COLORS.text, marginBottom: 20 },
+  ipText: { fontSize: 36, fontFamily: 'Inter_900Black', color: COLORS.gold, letterSpacing: 2, marginVertical: 8 },
+  playerCardsList: { width: '100%', gap: 8, marginBottom: 16 },
+  playerSlot: {
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    backgroundColor: COLORS.surface, borderRadius: 14, padding: 12,
+    borderWidth: 1, borderColor: COLORS.surfaceBorder,
+  },
+  playerSlotWaiting: {
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    backgroundColor: COLORS.backgroundAlt, borderRadius: 14, padding: 12,
+    borderWidth: 1, borderColor: COLORS.surfaceBorder, borderStyle: 'dashed',
+  },
+  slotAvatar: { fontSize: 26 },
+  slotAvatarImage: { width: 36, height: 36, resizeMode: 'contain' },
+  slotName: { color: COLORS.text, fontFamily: 'Inter_700Bold', fontSize: 15 },
+  slotRole: { color: COLORS.textMuted, fontFamily: 'Inter_400Regular', fontSize: 12, marginTop: 1 },
+  slotReady: { width: 26, height: 26, borderRadius: 13, backgroundColor: 'rgba(34,197,94,0.15)', borderWidth: 1, borderColor: COLORS.success, justifyContent: 'center', alignItems: 'center' },
+  slotReadyText: { color: COLORS.success, fontSize: 13, fontFamily: 'Inter_900Black' },
+
+  // ── Room code display ──
+  roomNameBadge: { color: COLORS.primary, fontFamily: 'Inter_700Bold', fontSize: 16, marginBottom: 6 },
+  roomCode: { fontSize: 38, fontFamily: 'Inter_900Black', color: COLORS.gold, letterSpacing: 5, marginBottom: 12 },
+  copyBtn: { backgroundColor: COLORS.surfaceAlt, paddingVertical: 8, paddingHorizontal: 20, borderRadius: 10, marginBottom: 6, borderWidth: 1, borderColor: COLORS.gold },
+  copyBtnText: { color: COLORS.gold, fontFamily: 'Inter_700Bold', fontSize: 13 },
+
+  // ── Pending join requests ──
+  pendingBlock: { width: '100%', backgroundColor: 'rgba(245,200,66,0.08)', borderRadius: 14, padding: 14, marginTop: 14, borderWidth: 1, borderColor: 'rgba(245,200,66,0.25)' },
+  pendingTitle: { color: COLORS.gold, fontFamily: 'Inter_700Bold', fontSize: 13, marginBottom: 10 },
+  pendingRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 8 },
+  pendingAvatar: { fontSize: 22, marginRight: 8 },
+  pendingName: { flex: 1, color: COLORS.text, fontFamily: 'Inter_400Regular', fontSize: 14 },
+  approveBtn: { backgroundColor: COLORS.success, borderRadius: 8, width: 34, height: 34, alignItems: 'center', justifyContent: 'center', marginRight: 6 },
+  approveBtnText: { color: '#FFF', fontFamily: 'Inter_700Bold', fontSize: 16 },
+  rejectBtn: { backgroundColor: COLORS.danger, borderRadius: 8, width: 34, height: 34, alignItems: 'center', justifyContent: 'center' },
+  rejectBtnText: { color: '#FFF', fontFamily: 'Inter_700Bold', fontSize: 16 },
+
+  // ── Misc ──
+  waitText: { color: COLORS.textSecondary, fontFamily: 'Inter_400Regular', fontSize: 15, textAlign: 'center', marginBottom: 8 },
+  hintText: { color: COLORS.textMuted, fontFamily: 'Inter_400Regular', fontSize: 12, textAlign: 'center', marginBottom: 8 },
+  errorText: { color: COLORS.danger, fontFamily: 'Inter_700Bold', fontSize: 14, textAlign: 'center', paddingHorizontal: 20, marginBottom: 10 },
+  cancelLink: { marginTop: 16, padding: 8 },
+  cancelText: { color: COLORS.textMuted, fontFamily: 'Inter_400Regular', fontSize: 14, textDecorationLine: 'underline' },
+
+  // ── Legacy (used in startSolo / stepper stubs) ──
+  stepper: { flexDirection: 'row', alignItems: 'center', gap: 20, marginBottom: 6 },
+  stepperButton: { width: 44, height: 44, borderRadius: 22, backgroundColor: COLORS.primary, justifyContent: 'center', alignItems: 'center' },
+  stepperButtonDisabled: { opacity: 0.3 },
+  stepperButtonActive: { borderColor: COLORS.primary },
+  stepperButtonText: { color: '#FFF', fontSize: 22, fontFamily: 'Inter_900Black' },
+  stepperValue: { color: COLORS.text, fontSize: 32, fontFamily: 'Inter_900Black', minWidth: 40, textAlign: 'center' },
+  stepperInfo: { color: COLORS.textMuted, fontFamily: 'Inter_400Regular', fontSize: 13, marginBottom: 16 },
+  stepperLabel: { color: COLORS.text, fontFamily: 'Inter_700Bold', fontSize: 14, marginBottom: 8 },
+  winConditionRow: { flexDirection: 'row', gap: 8, marginBottom: 8, width: '100%' },
+  winConditionChip: { flex: 1, borderRadius: 10, borderWidth: 1.5, borderColor: COLORS.surfaceBorder, paddingVertical: 8, alignItems: 'center' },
+  winConditionChipActive: { borderColor: COLORS.primary },
+  winConditionChipText: { color: COLORS.textSecondary, fontFamily: 'Inter_700Bold', fontSize: 12 },
+  winConditionChipTextActive: { color: COLORS.primary },
+  winConditionSub: { width: '100%', marginBottom: 8 },
+  identityRow: { flexDirection: 'row', marginBottom: 10, width: '100%' },
+  avatarList: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 10, marginBottom: 10 },
+  avatarBtn: { width: 44, height: 44, borderRadius: 22, backgroundColor: COLORS.surface, justifyContent: 'center', alignItems: 'center', borderWidth: 2, borderColor: 'transparent' },
+  avatarBtnActive: { borderColor: COLORS.primary },
+  avatarEmoji: { fontSize: 24 },
+  divider: { height: 1, backgroundColor: COLORS.surfaceBorder, width: '100%', marginVertical: 20 },
+  buttonTextOnly: { marginTop: 10, padding: 10 },
+  linkText: { color: COLORS.textMuted, fontFamily: 'Inter_400Regular', fontSize: 15, textDecorationLine: 'underline' },
+  button: { backgroundColor: COLORS.primary, paddingVertical: 14, paddingHorizontal: 24, borderRadius: 14, width: '100%', alignItems: 'center', marginVertical: 8 },
+  buttonSecondary: { backgroundColor: COLORS.primaryDark },
+  buttonText: { color: '#FFF', fontFamily: 'Inter_700Bold', fontSize: 16 },
+  buttonOnline: { backgroundColor: COLORS.primary },
+  buttonOnlineSecondary: { backgroundColor: COLORS.primaryDark },
+  input: { backgroundColor: COLORS.surface, width: '100%', padding: 14, borderRadius: 12, fontSize: 16, fontFamily: 'Inter_400Regular', marginBottom: 10, textAlign: 'center', color: COLORS.text, borderWidth: 1, borderColor: COLORS.surfaceBorder },
+  sectionTitle: { fontSize: 14, fontFamily: 'Inter_700Bold', color: COLORS.textSecondary, marginBottom: 10, alignSelf: 'flex-start' },
   centeredContent: { flex: 1, justifyContent: 'center', alignItems: 'center', width: '100%' },
-  button: { backgroundColor: COLORS.primary, paddingVertical: 16, paddingHorizontal: 30, borderRadius: BORDER_RADIUS.md, width: '100%', alignItems: 'center', marginVertical: 10 },
-  buttonSecondary: { backgroundColor: COLORS.secondary },
-  buttonText: { color: '#FFF', fontFamily: 'Inter_700Bold', fontSize: 18 },
-  input: { backgroundColor: '#FFF', width: '100%', padding: 18, borderRadius: BORDER_RADIUS.md, fontSize: 18, fontFamily: 'Inter_400Regular', marginBottom: 10, textAlign: 'center' },
-  ipText: { fontSize: 38, fontFamily: 'Inter_900Black', color: '#FFF', marginVertical: 15 },
-  clientText: { color: COLORS.secondary, fontFamily: 'Inter_700Bold', fontSize: 16, marginVertical: 8 },
-  // ── Player cards in lobby ──
-  playerCardsList: { width: '100%', gap: 10, marginTop: 12 },
-  playerCardItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(255,255,255,0.07)',
-    borderRadius: 14,
-    padding: 12,
-    gap: 12,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.1)',
-  },
-  playerCardAvatar: { fontSize: 28 },
-  playerCardInfo: { flex: 1 },
-  playerCardName: { color: '#FFF', fontFamily: 'Inter_700Bold', fontSize: 16 },
-  playerCardRole: { color: 'rgba(255,255,255,0.45)', fontFamily: 'Inter_400Regular', fontSize: 13, marginTop: 2 },
-  playerCardReady: {
-    width: 28, height: 28, borderRadius: 14,
-    backgroundColor: 'rgba(31, 178, 90, 0.2)',
-    borderWidth: 1, borderColor: '#1FB25A',
-    justifyContent: 'center', alignItems: 'center',
-  },
-  playerCardReadyText: { color: '#1FB25A', fontSize: 14, fontFamily: 'Inter_900Black' },
-  waitingSlot: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(255,255,255,0.03)',
-    borderRadius: 14,
-    padding: 14,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.06)',
-    borderStyle: 'dashed',
-  },
-  waitingSlotText: { color: 'rgba(255,255,255,0.35)', fontFamily: 'Inter_400Regular', fontSize: 14 },
-  waitText: { color: '#AAA', fontFamily: 'Inter_400Regular', fontSize: 16, marginTop: 15, textAlign: 'center' },
-  connectingHint: { color: 'rgba(255,255,255,0.35)', fontFamily: 'Inter_400Regular', fontSize: 12, marginTop: 6, textAlign: 'center' },
+  title: { fontSize: 38, fontFamily: 'Inter_900Black', color: COLORS.madaRed, marginBottom: 24 },
+  roomNameDisplay: { color: COLORS.primary, fontFamily: 'Inter_700Bold', fontSize: 16, marginBottom: 6 },
+  roomCodeText: { fontSize: 38, fontFamily: 'Inter_900Black', color: COLORS.gold, letterSpacing: 4, marginVertical: 12 },
+  copyButton: { backgroundColor: COLORS.surfaceAlt, paddingVertical: 8, paddingHorizontal: 20, borderRadius: 10, marginBottom: 8, borderWidth: 1, borderColor: COLORS.gold },
+  copyButtonText: { color: COLORS.gold, fontFamily: 'Inter_700Bold', fontSize: 13 },
   liveRoomsHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', width: '100%', marginBottom: 4 },
   refreshButton: { padding: 6 },
   refreshButtonText: { color: COLORS.primary, fontSize: 22, fontFamily: 'Inter_700Bold' },
-  liveRoomRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', width: '100%', backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: 10, paddingHorizontal: 14, paddingVertical: 10, marginBottom: 8 },
-  liveRoomCode: { color: '#FFF', fontFamily: 'Inter_700Bold', fontSize: 15, letterSpacing: 1 },
-  liveRoomMeta: { color: 'rgba(255,255,255,0.45)', fontFamily: 'Inter_400Regular', fontSize: 12, marginTop: 2 },
-  watchButton: { backgroundColor: COLORS.primary, borderRadius: 8, paddingHorizontal: 14, paddingVertical: 7 },
-  watchButtonText: { color: '#FFF', fontFamily: 'Inter_700Bold', fontSize: 13 },
-  roomNameDisplay: { color: COLORS.primary, fontFamily: 'Inter_700Bold', fontSize: 17, marginBottom: 6, textAlign: 'center' },
-  liveRoomName: { color: '#FFF', fontFamily: 'Inter_700Bold', fontSize: 14 },
+  liveRoomRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', width: '100%', backgroundColor: COLORS.surface, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 10, marginBottom: 8, borderWidth: 1, borderColor: COLORS.surfaceBorder },
+  liveRoomCode: { color: COLORS.text, fontFamily: 'Inter_700Bold', fontSize: 15, letterSpacing: 1 },
+  liveRoomMeta: { color: COLORS.textMuted, fontFamily: 'Inter_400Regular', fontSize: 12, marginTop: 2 },
   statusBadge: { borderRadius: 6, paddingHorizontal: 7, paddingVertical: 2 },
-  statusBadgeLobby: { backgroundColor: 'rgba(34,197,94,0.25)' },
-  statusBadgePlaying: { backgroundColor: 'rgba(239,68,68,0.25)' },
-  statusBadgeText: { color: '#FFF', fontFamily: 'Inter_400Regular', fontSize: 11 },
-  joinLiveButton: { backgroundColor: '#22C55E', borderRadius: 8, paddingHorizontal: 12, paddingVertical: 6 },
+  statusBadgeLobby: { backgroundColor: 'rgba(34,197,94,0.2)' },
+  statusBadgePlaying: { backgroundColor: 'rgba(239,68,68,0.2)' },
+  statusBadgeText: { color: COLORS.text, fontFamily: 'Inter_400Regular', fontSize: 11 },
+  joinLiveButton: { backgroundColor: COLORS.success, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 6 },
   joinLiveButtonText: { color: '#FFF', fontFamily: 'Inter_700Bold', fontSize: 12 },
-  winConditionRow: { flexDirection: 'row', gap: 8, marginBottom: 8, width: '100%' },
-  winConditionChip: { flex: 1, borderRadius: 10, borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.2)', paddingVertical: 8, alignItems: 'center' },
-  winConditionChipActive: { borderColor: COLORS.primary, backgroundColor: `${COLORS.primary}22` },
-  winConditionChipText: { color: 'rgba(255,255,255,0.55)', fontFamily: 'Inter_700Bold', fontSize: 12 },
-  winConditionChipTextActive: { color: COLORS.primary },
-  winConditionSub: { width: '100%', marginBottom: 8 },
-  stepperButtonActive: { backgroundColor: COLORS.primary },
-  pendingSection: { width: '100%', backgroundColor: 'rgba(255,165,0,0.1)', borderRadius: 12, padding: 12, marginTop: 16, borderWidth: 1, borderColor: 'rgba(255,165,0,0.3)' },
-  pendingSectionTitle: { color: '#FFA500', fontFamily: 'Inter_700Bold', fontSize: 13, marginBottom: 8 },
-  pendingRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 8 },
-  pendingAvatar: { fontSize: 22, marginRight: 8 },
-  pendingName: { flex: 1, color: '#FFF', fontFamily: 'Inter_400Regular', fontSize: 14 },
-  approveButton: { backgroundColor: '#22C55E', borderRadius: 8, width: 34, height: 34, alignItems: 'center', justifyContent: 'center', marginRight: 6 },
+  watchButton: { backgroundColor: COLORS.surfaceAlt, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 6, borderWidth: 1, borderColor: COLORS.surfaceBorder },
+  watchButtonText: { color: COLORS.textSecondary, fontFamily: 'Inter_700Bold', fontSize: 12 },
+  pendingSection: { width: '100%', backgroundColor: 'rgba(245,200,66,0.08)', borderRadius: 12, padding: 12, marginTop: 16, borderWidth: 1, borderColor: 'rgba(245,200,66,0.25)' },
+  pendingSectionTitle: { color: COLORS.gold, fontFamily: 'Inter_700Bold', fontSize: 13, marginBottom: 8 },
+  approveButton: { backgroundColor: COLORS.success, borderRadius: 8, width: 34, height: 34, alignItems: 'center', justifyContent: 'center', marginRight: 6 },
   approveButtonText: { color: '#FFF', fontFamily: 'Inter_700Bold', fontSize: 16 },
-  rejectButton: { backgroundColor: '#EF4444', borderRadius: 8, width: 34, height: 34, alignItems: 'center', justifyContent: 'center' },
+  rejectButton: { backgroundColor: COLORS.danger, borderRadius: 8, width: 34, height: 34, alignItems: 'center', justifyContent: 'center' },
   rejectButtonText: { color: '#FFF', fontFamily: 'Inter_700Bold', fontSize: 16 },
-  identityRow: {
-    flexDirection: 'row',
-    marginBottom: 10,
-    width: '100%',
-  },
-  nameInput: {
-    flex: 1,
-    backgroundColor: '#FFF',
-    borderRadius: BORDER_RADIUS.md,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    fontFamily: 'Inter_700Bold',
-    fontSize: 16,
-    color: '#333',
-    borderWidth: 1,
-    borderColor: '#E0E0E0',
-  },
-  avatarList: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'center',
-    gap: 10,
-    marginBottom: 10,
-  },
-  avatarBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: '#F5F5F5',
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 2,
-    borderColor: 'transparent',
-  },
-  avatarBtnActive: {
-    borderColor: COLORS.primary,
-    backgroundColor: '#E8F5E9',
-  },
-  avatarEmoji: {
-    fontSize: 24,
-  },
-  errorText: { color: '#E10214', fontFamily: 'Inter_700Bold', fontSize: 16, marginBottom: 20, textAlign: 'center', paddingHorizontal: 20 },
-  divider: { height: 1, backgroundColor: '#333', width: '100%', marginVertical: 25 },
-  buttonTextOnly: { marginTop: 10, padding: 10 },
-  linkText: { color: '#999', fontFamily: 'Inter_400Regular', fontSize: 16, textDecorationLine: 'underline' },
-  // ── Bot Stepper ──
-  stepperLabel: { color: '#FFF', fontFamily: 'Inter_700Bold', fontSize: 15, marginBottom: 10, textAlign: 'center' },
-  stepper: { flexDirection: 'row', alignItems: 'center', gap: 20, marginBottom: 6 },
-  stepperButton: { width: 44, height: 44, borderRadius: 22, backgroundColor: COLORS.primary, justifyContent: 'center', alignItems: 'center' },
-  stepperButtonDisabled: { backgroundColor: '#333', opacity: 0.5 },
-  stepperButtonText: { color: '#FFF', fontSize: 22, fontFamily: 'Inter_900Black' },
-  stepperValue: { color: '#FFF', fontSize: 32, fontFamily: 'Inter_900Black', minWidth: 40, textAlign: 'center' },
-  stepperInfo: { color: '#AAA', fontFamily: 'Inter_400Regular', fontSize: 13, marginBottom: 16, textAlign: 'center' },
-  // ── Online ──
-  buttonOnline: { backgroundColor: '#1565C0' },
-  buttonOnlineSecondary: { backgroundColor: '#0D47A1' },
-  roomCodeText: { fontSize: 40, fontFamily: 'Inter_900Black', color: COLORS.accent, letterSpacing: 4, marginVertical: 12, textAlign: 'center' },
-  copyButton: { backgroundColor: '#2A2A2A', paddingVertical: 8, paddingHorizontal: 20, borderRadius: BORDER_RADIUS.md, marginBottom: 8, borderWidth: 1, borderColor: COLORS.accent },
-  copyButtonText: { color: COLORS.accent, fontFamily: 'Inter_700Bold', fontSize: 14 },
+  connectingHint: { color: COLORS.textMuted, fontFamily: 'Inter_400Regular', fontSize: 12, marginTop: 6, textAlign: 'center' },
+  waitingSlot: { flexDirection: 'row', alignItems: 'center', backgroundColor: COLORS.backgroundAlt, borderRadius: 12, padding: 12, borderWidth: 1, borderColor: COLORS.surfaceBorder, borderStyle: 'dashed' },
+  waitingSlotText: { color: COLORS.textMuted, fontFamily: 'Inter_400Regular', fontSize: 14 },
+  playerCardItem: { flexDirection: 'row', alignItems: 'center', backgroundColor: COLORS.surface, borderRadius: 12, padding: 12, gap: 12, borderWidth: 1, borderColor: COLORS.surfaceBorder },
+  playerCardAvatar: { fontSize: 26 },
+  playerCardInfo: { flex: 1 },
+  playerCardName: { color: COLORS.text, fontFamily: 'Inter_700Bold', fontSize: 15 },
+  playerCardRole: { color: COLORS.textMuted, fontFamily: 'Inter_400Regular', fontSize: 12, marginTop: 1 },
+  playerCardReady: { width: 26, height: 26, borderRadius: 13, backgroundColor: 'rgba(34,197,94,0.15)', borderWidth: 1, borderColor: COLORS.success, justifyContent: 'center', alignItems: 'center' },
+  playerCardReadyText: { color: COLORS.success, fontSize: 13, fontFamily: 'Inter_900Black' },
 });

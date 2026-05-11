@@ -289,7 +289,7 @@ export const useGameStore = create<GameStoreState & GameActions>((setOriginal, g
       clientId: null,
       localPlayerId: null,
       localPlayerName: 'Joueur',
-      localPlayerAvatar: '🎩',
+      localPlayerAvatar: 'lemur-madagascar',
       appScreen: 'lobby',
       connectedClients: [],
     });

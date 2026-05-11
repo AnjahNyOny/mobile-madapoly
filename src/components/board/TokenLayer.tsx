@@ -1,23 +1,85 @@
 import React, { useEffect, useRef, useCallback } from 'react';
-import { StyleSheet, View, Text } from 'react-native';
+import { StyleSheet, View, Text, Image } from 'react-native';
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
   withTiming,
   withSpring,
+  withSequence,
+  runOnJS,
   Easing,
 } from 'react-native-reanimated';
 import { useGameStore } from '../../store/useGameStore';
 import { getTileCenter } from '../../utils/mathHelpers';
 import { COLORS } from '../../styles/theme';
+import { CameraController } from '../../utils/CameraController';
 
 // ─── CONFIGURATION ───
 const TOKEN_SIZE = 28;
-const ANIMATION_DURATION = 650; // ms
+const PRE_MOVE_DELAY = 1000;    // ms pause after dice result before moving
+const STEP_DURATION = 380;     // ms per tile step
+const STEP_EASING = Easing.out(Easing.quad);
+const FINAL_SPRING = { damping: 8, stiffness: 160, mass: 0.6 }; // bouncy landing
+const LEVITATE_DURATION = 600; // ms for teleport arc
+const MAX_ANIMATED_STEPS = 12; // beyond this, levitate directly (avoid very long animations)
 
 // Distinct player colors inspired by the Malagasy palette
 const PLAYER_COLORS = ['#E10214', '#0069AF', '#1FB25A', '#FEDB01'];
-const PLAYER_EMOJIS = ['👤', '🤖', '🎭', '🦊'];
+
+const TOKEN_IMAGES: Record<string, any> = {
+  'lemur-madagascar': require('../../../assets/images/tokens/lemur-madagascar.png'),
+  'cow':              require('../../../assets/images/tokens/cow.png'),
+  'chameleon':        require('../../../assets/images/tokens/chameleon.png'),
+  'crocodile':        require('../../../assets/images/tokens/crocodile.png'),
+  'eagle':            require('../../../assets/images/tokens/eagle.png'),
+  'lion':             require('../../../assets/images/tokens/lion.png'),
+  'turtle':           require('../../../assets/images/tokens/turtle.png'),
+  'frog':             require('../../../assets/images/tokens/frog.png'),
+  'angler-fish':      require('../../../assets/images/tokens/angler-fish.png'),
+  'anteater':         require('../../../assets/images/tokens/anteater.png'),
+  'baboon':           require('../../../assets/images/tokens/baboon.png'),
+  'bear':             require('../../../assets/images/tokens/bear.png'),
+  'beaver':           require('../../../assets/images/tokens/beaver.png'),
+  'bee':              require('../../../assets/images/tokens/bee.png'),
+  'bison':            require('../../../assets/images/tokens/bison.png'),
+  'boar':             require('../../../assets/images/tokens/boar.png'),
+  'butterfly':        require('../../../assets/images/tokens/butterfly.png'),
+  'capybara':         require('../../../assets/images/tokens/capybara.png'),
+  'cat':              require('../../../assets/images/tokens/cat.png'),
+  'chimpanzee':       require('../../../assets/images/tokens/chimpanzee.png'),
+  'crab':             require('../../../assets/images/tokens/crab.png'),
+  'deer':             require('../../../assets/images/tokens/deer.png'),
+  'dolphin':          require('../../../assets/images/tokens/dolphin.png'),
+  'dove':             require('../../../assets/images/tokens/dove.png'),
+  'elephant':         require('../../../assets/images/tokens/elephant.png'),
+  'fennec':           require('../../../assets/images/tokens/fennec.png'),
+  'fox':              require('../../../assets/images/tokens/fox.png'),
+  'goat':             require('../../../assets/images/tokens/goat.png'),
+  'goldfish':         require('../../../assets/images/tokens/goldfish.png'),
+  'guinea-pig':       require('../../../assets/images/tokens/guinea-pig.png'),
+  'hedgehog':         require('../../../assets/images/tokens/hedgehog.png'),
+  'hippopotamus':     require('../../../assets/images/tokens/hippopotamus.png'),
+  'horse':            require('../../../assets/images/tokens/horse.png'),
+  'hyena':            require('../../../assets/images/tokens/hyena.png'),
+  'kangaroo':         require('../../../assets/images/tokens/kangaroo.png'),
+  'koala':            require('../../../assets/images/tokens/koala.png'),
+  'llama':            require('../../../assets/images/tokens/llama.png'),
+  'mouse':            require('../../../assets/images/tokens/mouse.png'),
+  'owl':              require('../../../assets/images/tokens/owl.png'),
+  'panda-bear-panda': require('../../../assets/images/tokens/panda-bear-panda.png'),
+  'penguin-bird':     require('../../../assets/images/tokens/penguin-bird.png'),
+  'pig':              require('../../../assets/images/tokens/pig.png'),
+  'rabbit':           require('../../../assets/images/tokens/rabbit.png'),
+  'raccoon':          require('../../../assets/images/tokens/raccoon.png'),
+  'shark':            require('../../../assets/images/tokens/shark.png'),
+  'sheep':            require('../../../assets/images/tokens/sheep.png'),
+  'sloth':            require('../../../assets/images/tokens/sloth.png'),
+  'snake':            require('../../../assets/images/tokens/snake.png'),
+  'spider':           require('../../../assets/images/tokens/spider.png'),
+  'squirrel':         require('../../../assets/images/tokens/squirrel.png'),
+  'tiger':            require('../../../assets/images/tokens/tiger.png'),
+  'wolf':             require('../../../assets/images/tokens/wolf.png'),
+};
 
 // ─── PLAYER TOKEN COMPONENT ───
 interface PlayerTokenProps {
@@ -28,6 +90,18 @@ interface PlayerTokenProps {
   position: number;
   playerIndex: number;
   isCurrentPlayer: boolean;
+}
+
+// Build the step-by-step path from oldPos to newPos (wrapping around 40 tiles)
+function buildPath(from: number, to: number): number[] {
+  if (from === to) return [];
+  const path: number[] = [];
+  let cur = from;
+  while (cur !== to) {
+    cur = (cur + 1) % 40;
+    path.push(cur);
+  }
+  return path;
 }
 
 const PlayerToken = React.memo(({ 
@@ -54,52 +128,115 @@ const PlayerToken = React.memo(({
   const initialCenter = getTileCenter(position);
   const animX = useSharedValue(initialCenter.x + offsetX);
   const animY = useSharedValue(initialCenter.y + offsetY);
+  const animScale = useSharedValue(1);
 
-  // Stable callback for endAnimation
+  // Guard against double endAnimation call (withSpring callback + safety timeout)
+  const animationEnded = useRef(false);
   const onAnimationEnd = useCallback(() => {
+    if (animationEnded.current) return;
+    animationEnded.current = true;
+    if (animationTimeout.current) {
+      clearTimeout(animationTimeout.current);
+      animationTimeout.current = null;
+    }
     endAnimation();
   }, [endAnimation]);
 
   useEffect(() => {
-    // Position hasn't changed — no action needed
     if (lastPosition.current === position) return;
+
+    const prevPos = lastPosition.current;
+    lastPosition.current = position;
 
     const newCenter = getTileCenter(position);
     const targetX = newCenter.x + offsetX;
     const targetY = newCenter.y + offsetY;
 
-    // Clear any pending animation timeout
+    animationEnded.current = false;
+
     if (animationTimeout.current) {
       clearTimeout(animationTimeout.current);
       animationTimeout.current = null;
     }
 
-    if (isCurrentPlayer && turnPhase === 'ANIMATING_MOVEMENT') {
-      // ── ANIMATED MOVE ──
-      // Organic bouncy animation using withSpring
-      const springConfig = { damping: 14, stiffness: 110, mass: 0.8 };
-      animX.value = withSpring(targetX, springConfig);
-      animY.value = withSpring(targetY, springConfig);
-
-      // Call endAnimation after the animation completes
-      // Using timeout as a reliable cross-platform approach (web + native)
-      animationTimeout.current = setTimeout(() => {
-        onAnimationEnd();
-      }, ANIMATION_DURATION + 80);
-    } else {
-      // ── INSTANT SNAP ──
-      // Teleport (e.g., go-to-jail, initial placement)
+    if (!isCurrentPlayer || turnPhase !== 'ANIMATING_MOVEMENT') {
+      // ── INSTANT SNAP (other players or non-animation phases) ──
       animX.value = targetX;
       animY.value = targetY;
+      return;
     }
 
-    lastPosition.current = position;
+    const path = buildPath(prevPos, position);
 
-    return () => {
-      if (animationTimeout.current) {
-        clearTimeout(animationTimeout.current);
-      }
-    };
+    if (path.length === 0 || path.length > MAX_ANIMATED_STEPS) {
+      // ── TELEPORT / LEVITATION ARC ──
+      const midY = Math.min(animY.value, targetY) - 60;
+      // Pan camera after delay to destination
+      const panToTarget = () => CameraController.panTo(position);
+      animScale.value = withSequence(
+        withTiming(1, { duration: PRE_MOVE_DELAY }),
+        withTiming(1.35, { duration: LEVITATE_DURATION * 0.4, easing: Easing.out(Easing.quad) }),
+        withTiming(1, { duration: LEVITATE_DURATION * 0.6, easing: Easing.in(Easing.quad) }),
+      );
+      animX.value = withSequence(
+        withTiming(animX.value, { duration: PRE_MOVE_DELAY }, () => { runOnJS(panToTarget)(); }),
+        withTiming(targetX, { duration: LEVITATE_DURATION, easing: Easing.inOut(Easing.quad) }),
+      );
+      animY.value = withSequence(
+        withTiming(animY.value, { duration: PRE_MOVE_DELAY }),
+        withTiming(midY, { duration: LEVITATE_DURATION * 0.45, easing: Easing.out(Easing.quad) }),
+        withTiming(targetY, { duration: LEVITATE_DURATION * 0.55, easing: Easing.in(Easing.cubic) }, () => {
+          runOnJS(onAnimationEnd)();
+        }),
+      );
+      return;
+    }
+
+    // ── CASE PAR CASE avec rebond ──
+    // Chain withSpring per step, call endAnimation on last step
+    const stepTargets = path.map(idx => {
+      const c = getTileCenter(idx);
+      return { x: c.x + offsetX, y: c.y + offsetY };
+    });
+
+    // Build per-step camera pan callbacks
+    const panFns = path.map(stepPos => () => CameraController.panTo(stepPos));
+
+    // Scale: hold during delay, then bounce on last step
+    animScale.value = withSequence(
+      withTiming(1, { duration: PRE_MOVE_DELAY + (stepTargets.length - 1) * STEP_DURATION }),
+      withTiming(1.25, { duration: STEP_DURATION * 0.3 }),
+      withSpring(1, { damping: 7, stiffness: 250 }),
+    );
+
+    // X: pause then step-by-step, pan camera on each step via callback
+    const xSeq = [
+      withTiming(animX.value, { duration: PRE_MOVE_DELAY }),
+      ...stepTargets.map((t, i) =>
+        withTiming(t.x, { duration: STEP_DURATION, easing: STEP_EASING }, () => {
+          runOnJS(panFns[i])();
+        })
+      ),
+    ];
+    animX.value = withSequence(...xSeq);
+
+    // Y: pause then step-by-step, withSpring on last for bounce landing
+    const ySeq = [
+      withTiming(animY.value, { duration: PRE_MOVE_DELAY }),
+      ...stepTargets.map((t, i) => {
+        const isLast = i === stepTargets.length - 1;
+        if (isLast) {
+          return withSpring(t.y, FINAL_SPRING, () => { runOnJS(onAnimationEnd)(); });
+        }
+        return withTiming(t.y, { duration: STEP_DURATION, easing: STEP_EASING });
+      }),
+    ];
+    animY.value = withSequence(...ySeq);
+
+    // Safety fallback
+    const totalMs = PRE_MOVE_DELAY + stepTargets.length * STEP_DURATION + 600;
+    animationTimeout.current = setTimeout(onAnimationEnd, totalMs);
+
   }, [position, turnPhase, isCurrentPlayer]);
 
   // Animated style — only transforms, no layout changes (GPU-accelerated)
@@ -107,11 +244,12 @@ const PlayerToken = React.memo(({
     transform: [
       { translateX: animX.value - TOKEN_SIZE / 2 },
       { translateY: animY.value - TOKEN_SIZE / 2 },
+      { scale: animScale.value },
     ],
   }));
 
   const color = PLAYER_COLORS[playerIndex % PLAYER_COLORS.length];
-  const emoji = avatar || (isBot ? '🤖' : '👤');
+  const tokenImg = TOKEN_IMAGES[avatar];
 
   return (
     <Animated.View style={[styles.token, animatedStyle]}>
@@ -120,7 +258,11 @@ const PlayerToken = React.memo(({
       
       {/* Token body */}
       <View style={[styles.tokenBody, { backgroundColor: color }]}>
-        <Text style={styles.tokenEmoji}>{emoji}</Text>
+        {tokenImg ? (
+          <Image source={tokenImg} style={styles.tokenImg} />
+        ) : (
+          <Text style={styles.tokenEmoji}>{avatar || (isBot ? '🤖' : '👤')}</Text>
+        )}
       </View>
 
       {/* Player initial label */}
@@ -199,6 +341,11 @@ const styles = StyleSheet.create({
   },
   tokenEmoji: {
     fontSize: 14,
+  },
+  tokenImg: {
+    width: TOKEN_SIZE - 6,
+    height: TOKEN_SIZE - 6,
+    resizeMode: 'contain',
   },
   tokenLabel: {
     marginTop: 1,

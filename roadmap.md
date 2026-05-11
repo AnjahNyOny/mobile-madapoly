@@ -261,18 +261,18 @@ Transformer le jeu local actuel géré par Zustand en une architecture Client-Se
 
 ### 10.3 Conditions de Victoire Personnalisées 🏆
 
-#### 10.3.a Fortune Limite
-- [ ] Option dans le lobby : "Fortune limite" avec un sélecteur de montant (ex : 5 000 AR, 10 000 AR, illimité).
-- [ ] Stocker `winCondition: { type: 'fortune_limit', amount: number } | { type: 'last_standing' }` dans le store.
-- [ ] À chaque fin de tour, vérifier si un joueur a atteint le seuil → déclencher `GAME_OVER` avec ce joueur comme vainqueur.
-- [ ] En réseau : la condition est définie par l'hôte et envoyée dans `GAME_START`.
+#### 10.3.a Fortune Limite ✅
+- [x] Option dans le lobby : "Fortune limite" avec un sélecteur de montant (5k, 10k, 20k, 50k AR).
+- [x] Stocker `winCondition: { type: 'fortune_limit', amount: number } | { type: 'last_standing' }` dans le store.
+- [x] À chaque fin de tour, vérifier si un joueur a atteint le seuil → déclencher `GAME_OVER` avec ce joueur comme vainqueur.
+- [x] En réseau : la condition est définie par l'hôte et envoyée dans `GAME_START` (+ `winCondition` + `chronoEndTime`).
 
-#### 10.3.b Mode Chrono ⏱️
-- [ ] Option dans le lobby : "Durée de partie" avec des paliers (15 min, 30 min, 45 min, ∞).
-- [ ] Stocker `chronoEndTime: number | null` dans le store (timestamp de fin).
-- [ ] Afficher un compteur décroissant dans le HUD (visible uniquement si mode chrono activé).
-- [ ] À expiration : figer le jeu, comparer les fortunes nettes de tous les joueurs actifs (solde + valeur des propriétés au prix d'achat) → vainqueur = fortune nette la plus haute.
-- [ ] En réseau : l'hôte démarre le chrono et le broadcast dans `GAME_START`. Les clients se synchronisent sur `chronoEndTime`.
+#### 10.3.b Mode Chrono ⏱️ ✅
+- [x] Option dans le lobby : "Durée de partie" avec des paliers (15 min, 30 min, 45 min, 60 min).
+- [x] Stocker `chronoEndTime: number | null` dans le store (timestamp de fin).
+- [x] Afficher un compteur décroissant dans le HUD (visible uniquement si mode chrono activé).
+- [x] À expiration : figer le jeu, comparer les fortunes nettes → vainqueur = fortune nette la plus haute.
+- [x] En réseau : l'hôte démarre le chrono et le broadcast dans `GAME_START`. Les clients se synchronisent sur `chronoEndTime`.
 
 ### 10.4 Panneau des Propriétés 🗃️
 

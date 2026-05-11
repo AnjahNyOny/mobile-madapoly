@@ -72,16 +72,8 @@ export const HUDLayer = () => {
   return (
     <View style={styles.overlay} pointerEvents="box-none">
       <SafeAreaView style={styles.safeArea} pointerEvents="box-none">
-        {/* ─── TOP: Player Cards + Settings ─── */}
+        {/* ─── TOP: Player Cards + Chrono ─── */}
         <View style={styles.topBar} pointerEvents="box-none">
-          <TouchableOpacity 
-            style={styles.logButton}
-            onPress={() => setIsGameLogOpen(true)}
-            activeOpacity={0.7}
-          >
-            <Text style={styles.logButtonIcon}>📜</Text>
-          </TouchableOpacity>
-          <ForfeitButton />
           {chronoDisplay && (
             <View style={[
               styles.chronoBadge,
@@ -132,7 +124,7 @@ export const HUDLayer = () => {
 
           {/* Roll button — only visible when it's time to roll */}
           {canRoll && !isGameOver && (
-            <View style={{ flexDirection: 'row', gap: 10 }}>
+            <View style={styles.actionRow}>
               <TouchableOpacity
                 style={styles.rollButton}
                 onPress={rollDice}
@@ -143,12 +135,11 @@ export const HUDLayer = () => {
               </TouchableOpacity>
               
               <TouchableOpacity
-                style={[styles.rollButton, { backgroundColor: '#333' }]}
+                style={styles.tradeButton}
                 onPress={() => setIsTradeModalOpen(true)}
                 activeOpacity={0.8}
               >
-                <Text style={styles.rollButtonIcon}>🤝</Text>
-                <Text style={styles.rollButtonText}>ÉCHANGER</Text>
+                <Text style={styles.tradeButtonIcon}>🤝</Text>
               </TouchableOpacity>
             </View>
           )}
@@ -180,6 +171,20 @@ export const HUDLayer = () => {
               <Text style={styles.phaseText}>⛓️ {currentPlayer?.name} est en prison...</Text>
             </View>
           )}
+          {/* ─── Bottom-left: Log ─── */}
+          <View style={styles.bottomLeftBar} pointerEvents="box-none">
+            <TouchableOpacity
+              style={styles.iconBtn}
+              onPress={() => setIsGameLogOpen(true)}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.iconBtnText}>📜</Text>
+            </TouchableOpacity>
+          </View>
+          {/* ─── Bottom-right: Forfeit ─── */}
+          <View style={styles.bottomRightBar} pointerEvents="box-none">
+            <ForfeitButton />
+          </View>
         </View>
       </SafeAreaView>
 
@@ -221,20 +226,50 @@ const styles = StyleSheet.create({
     position: 'relative',
     zIndex: 10,
   },
-  logButton: {
-    position: 'absolute',
-    top: 8 + (Platform.OS === 'android' ? StatusBar.currentHeight || 0 : 0),
-    left: 8,
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+  actionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  tradeButton: {
+    width: 46,
+    height: 46,
+    borderRadius: 23,
     backgroundColor: 'rgba(255,255,255,0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.12)',
     justifyContent: 'center',
     alignItems: 'center',
-    zIndex: 10,
   },
-  logButtonIcon: {
+  tradeButtonIcon: {
     fontSize: 20,
+  },
+  bottomLeftBar: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    paddingBottom: SPACING.lg,
+    paddingLeft: SPACING.md,
+  },
+  bottomRightBar: {
+    position: 'absolute',
+    bottom: 0,
+    right: 0,
+    paddingBottom: SPACING.lg,
+    paddingRight: SPACING.md,
+  },
+  iconBtn: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: 'rgba(255,255,255,0.07)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  iconBtnText: {
+    fontSize: 17,
   },
   chronoBadge: {
     backgroundColor: 'rgba(18,18,18,0.85)',
@@ -295,26 +330,24 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: COLORS.primary,
-    paddingVertical: 14,
-    paddingHorizontal: 20,
+    paddingVertical: 11,
+    paddingHorizontal: 22,
     borderRadius: BORDER_RADIUS.xl,
-    gap: 10,
-    // Premium shadow
+    gap: 8,
     shadowColor: COLORS.primary,
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.4,
-    shadowRadius: 12,
-    elevation: 10,
-    // Subtle border for depth
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.45,
+    shadowRadius: 10,
+    elevation: 8,
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.15)',
   },
   rollButtonIcon: {
-    fontSize: 22,
+    fontSize: 18,
   },
   rollButtonText: {
     color: COLORS.white,
-    fontSize: 18,
+    fontSize: 15,
     fontFamily: 'Inter_900Black',
     letterSpacing: 2,
   },

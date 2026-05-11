@@ -16,6 +16,7 @@ import { BoardLayer } from '../components/board/BoardLayer';
 import { TokenLayer } from '../components/board/TokenLayer';
 import { HUDLayer } from '../components/ui/HUDLayer';
 import { useBotLogic } from '../hooks/useBotLogic';
+import { CameraController } from '../utils/CameraController';
 
 const { width: _width, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const SCREEN_WIDTH = Platform.OS === 'web' ? Math.min(_width, 480) : _width;
@@ -88,24 +89,23 @@ export const GameScreen = () => {
     ],
   }));
 
+  // ── Register camera pan callback for TokenLayer to drive during animation ──
+  useEffect(() => {
+    CameraController.register(centerOnPosition);
+    return () => CameraController.unregister();
+  }, [centerOnPosition]);
+
   // ── Center camera on DÉPART when GameScreen mounts ──
-  // Game is already initialized by LobbyScreen before we get here.
   useEffect(() => {
     centerOnPosition(0);
   }, []);
 
-  // ── Camera follow: center on active player ──
+  // ── Camera follow: center on active player (non-animation phases only) ──
   useEffect(() => {
     if (players.length === 0) return;
-
     const currentPlayer = players[currentPlayerIndex];
-
-    // On new turn start → smooth pan to player's position
+    // Pan to player at turn start — TokenLayer handles ANIMATING_MOVEMENT
     if (turnPhase === 'WAITING_FOR_DICE') {
-      centerOnPosition(currentPlayer.position);
-    }
-    // On movement → follow the token to its new position
-    if (turnPhase === 'ANIMATING_MOVEMENT') {
       centerOnPosition(currentPlayer.position);
     }
   }, [turnPhase, currentPlayerIndex, players.length]);

@@ -13,16 +13,16 @@ import { TileIconRenderer } from './TileIconRenderer';
 
 // Background colors per tile type
 const BG_COLORS: Record<string, string> = {
-  'start':           '#D4F5D4',
-  'jail':            '#FFE0B2',
-  'free-parking':    '#E8E8E8',
-  'go-to-jail':      '#FFCDD2',
-  'community-chest': '#FFF9C4',
-  'chance':          '#E1F5FE',
-  'tax':             '#F3E5F5',
-  'railroad':        '#F5F5F5',
+  'start':           '#E8F8EE',
+  'jail':            '#FFF3E0',
+  'free-parking':    '#F0F4F8',
+  'go-to-jail':      '#FFEBEE',
+  'community-chest': '#FFFDE7',
+  'chance':          '#E3F2FD',
+  'tax':             '#FCE4EC',
+  'railroad':        '#FAFAFA',
   'utility':         '#E8F5E9',
-  'property':        '#FFFFFF',
+  'property':        '#FEFEFE',
 };
 
 /**
@@ -152,7 +152,7 @@ const styles = StyleSheet.create({
   tile: {
     position: 'absolute',
     borderWidth: 0.5,
-    borderColor: '#888888',
+    borderColor: 'rgba(0,0,0,0.15)',
     overflow: 'hidden',
   },
   contentContainer: {

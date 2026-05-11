@@ -11,6 +11,7 @@ export interface BoardSpace {
    */
   rent?: number[];
   color?: string;
+  buildCost?: number;
 }
 
 // ─── Utility: Group color → list of space IDs ───

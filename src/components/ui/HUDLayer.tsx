@@ -36,6 +36,8 @@ export const HUDLayer = () => {
   const setIsGameLogOpen = useGameStore(s => s.setIsGameLogOpen);
   const chronoEndTime = useGameStore(s => s.chronoEndTime);
   const checkChronoExpired = useGameStore(s => s.checkChronoExpired);
+  const turnTimeRemaining = useGameStore(s => s.turnTimeRemaining);
+console.log(`[HUD] turnTimeRemaining:`, turnTimeRemaining);
   const [isTradeModalOpen, setIsTradeModalOpen] = React.useState(false);
   const [chronoDisplay, setChronoDisplay] = useState<string | null>(null);
 
@@ -87,11 +89,26 @@ export const HUDLayer = () => {
           )}
           <View style={styles.playerCardsRow}>
             {players.map((player, index) => (
-              <PlayerCard
-                key={player.id}
-                player={player}
-                isActive={index === currentPlayerIndex}
-              />
+              <View key={player.id} style={styles.playerCardContainer}>
+                <PlayerCard
+                  player={player}
+                  isActive={index === currentPlayerIndex}
+                />
+                {/* Timer display under active player card */}
+                {index === currentPlayerIndex && turnTimeRemaining !== null && !player.isBot && (
+                  <View style={[
+                    styles.timerContainer,
+                    turnTimeRemaining <= 5000 && styles.timerUrgent
+                  ]}>
+                    <Text style={[
+                      styles.timerText,
+                      turnTimeRemaining <= 5000 && styles.timerTextUrgent
+                    ]}>
+                      ⏱ {Math.ceil(turnTimeRemaining / 1000)}s
+                    </Text>
+                  </View>
+                )}
+              </View>
             ))}
           </View>
         </View>
@@ -403,5 +420,31 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontFamily: 'Inter_400Regular',
     marginTop: 6,
+  },
+
+  // ─── TIMER STYLES ───
+  playerCardContainer: {
+    alignItems: 'center',
+  },
+  timerContainer: {
+    backgroundColor: 'rgba(18, 18, 18, 0.8)',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: BORDER_RADIUS.sm,
+    marginTop: 4,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
+  },
+  timerUrgent: {
+    backgroundColor: 'rgba(225, 29, 20, 0.8)',
+    borderColor: 'rgba(225, 29, 20, 0.3)',
+  },
+  timerText: {
+    color: COLORS.textSecondary,
+    fontSize: 11,
+    fontFamily: 'Inter_600SemiBold',
+  },
+  timerTextUrgent: {
+    color: COLORS.white,
   },
 });

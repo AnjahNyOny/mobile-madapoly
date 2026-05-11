@@ -6,6 +6,11 @@ import { shuffleArray } from '../utils/mathHelpers';
 import { CHANCE_CARDS, COMMUNITY_CHEST_CARDS, GameCard } from '../constants/cards';
 import { NetworkManager } from '../network/NetworkManager';
 
+// ─── Turn timeout system ───
+let turnTimeoutTimer: any = null;
+let turnTimeoutStart: number = 0;
+const TURN_TIMEOUT_MS = 20000; // 20 seconds
+
 // ─── Connected client type (host-side, persisted across screen changes) ───
 export interface ConnectedClient {
   socketId: string;
@@ -71,6 +76,11 @@ interface GameActions {
   setWinCondition: (condition: WinCondition) => void;
   setChronoEndTime: (ts: number | null) => void;
   checkChronoExpired: () => void;
+  
+  // ── Turn Timeout Management ──
+  startTurnTimeout: () => void;
+  clearTurnTimeout: () => void;
+  setTurnTimeRemaining: (remaining: number | null) => void;
 }
 
 export type WinCondition =
@@ -94,6 +104,7 @@ interface GameStoreState extends GameState {
   connectedClients: ConnectedClient[];
   winCondition: WinCondition;
   chronoEndTime: number | null;
+  turnTimeRemaining: number | null;
 
   // UI Modal states (local only, not broadcasted)
   selectedPlayerIdForProps: string | null;
@@ -105,10 +116,10 @@ interface GameStoreState extends GameState {
 const broadcastIfHost = (getState: () => GameStoreState) => {
   const state = getState();
   if (state.networkRole === 'host') {
-    const { players, board, currentPlayerIndex, turnPhase, consecutiveDoubles, lastDiceRoll, actionDeadline, lastEvent, gameLog, turnCount, chanceDeck, communityChestDeck, activeTradeOffer, winCondition, chronoEndTime } = state;
+    const { players, board, currentPlayerIndex, turnPhase, consecutiveDoubles, lastDiceRoll, actionDeadline, lastEvent, gameLog, turnCount, chanceDeck, communityChestDeck, activeTradeOffer, winCondition, chronoEndTime, turnTimeRemaining } = state;
     NetworkManager.broadcast({
       type: 'STATE_UPDATE',
-      payload: { players, board, currentPlayerIndex, turnPhase, consecutiveDoubles, lastDiceRoll, actionDeadline, lastEvent, gameLog, turnCount, chanceDeck, communityChestDeck, activeTradeOffer, winCondition, chronoEndTime }
+      payload: { players, board, currentPlayerIndex, turnPhase, consecutiveDoubles, lastDiceRoll, actionDeadline, lastEvent, gameLog, turnCount, chanceDeck, communityChestDeck, activeTradeOffer, winCondition, chronoEndTime, turnTimeRemaining }
     });
   }
 };
@@ -127,7 +138,7 @@ const computeNetWorth = (player: any, board: any): number => {
 
 export const useGameStore = create<GameStoreState & GameActions>((setOriginal, get) => {
   // Wrap `set` to automatically append new events to the gameLog
-  const set = (partial: any, replace?: boolean | undefined) => {
+  const set = (partial: any, replace?: boolean) => {
     if (typeof partial === 'object' && partial !== null && 'lastEvent' in partial) {
       const event = partial.lastEvent;
       // If an event is provided and is different from the last one
@@ -136,7 +147,7 @@ export const useGameStore = create<GameStoreState & GameActions>((setOriginal, g
         partial.gameLog = [logMsg, ...get().gameLog].slice(0, 50); // Keep last 50 logs
       }
     }
-    setOriginal(partial, replace);
+    setOriginal(partial, replace as any);
   };
 
   return {
@@ -146,22 +157,30 @@ export const useGameStore = create<GameStoreState & GameActions>((setOriginal, g
     currentPlayerIndex: 0, 
     turnPhase: 'WAITING_FOR_DICE',
     consecutiveDoubles: 0, 
-  lastDiceRoll: null, 
-  actionDeadline: null,
-  lastEvent: null,
-  networkRole: 'local',
-  networkStatus: 'connected',
-  clientId: null,
-  localPlayerId: null,
-  appScreen: 'lobby',
-  connectedClients: [],
-  winCondition: { type: 'last_standing' },
-  chronoEndTime: null,
-  
-  // Initial UI states
-  selectedPlayerIdForProps: null,
-  selectedSpaceIdForDetail: null,
-  isGameLogOpen: false,
+    lastDiceRoll: null, 
+    actionDeadline: null,
+    gameLog: [],
+    turnCount: 1,
+    chanceDeck: [],
+    communityChestDeck: [],
+    activeTradeOffer: null,
+    lastEvent: null,
+    networkRole: 'local',
+    networkStatus: 'connected',
+    clientId: null,
+    localPlayerId: null,
+    localPlayerName: '',
+    localPlayerAvatar: '',
+    appScreen: 'lobby',
+    connectedClients: [],
+    winCondition: { type: 'last_standing' },
+    chronoEndTime: null,
+    turnTimeRemaining: null,
+    
+    // Initial UI states
+    selectedPlayerIdForProps: null,
+    selectedSpaceIdForDetail: null,
+    isGameLogOpen: false,
 
   // --- ACTIONS ---
   setAppScreen: (screen) => set({ appScreen: screen }),
@@ -386,6 +405,8 @@ export const useGameStore = create<GameStoreState & GameActions>((setOriginal, g
       turnPhase: 'ANIMATING_MOVEMENT',
       lastEvent: event,
     });
+    // Clear timeout when player acts
+    get().clearTurnTimeout();
     broadcastIfHost(get);
   },
 
@@ -672,6 +693,8 @@ export const useGameStore = create<GameStoreState & GameActions>((setOriginal, g
       actionDeadline: null,
       lastEvent: { type: 'purchase', message: `${player.name} achète ${space.name} pour ${space.price} AR !`, emoji: '🏠' },
     });
+    // Clear timeout when player acts
+    get().clearTurnTimeout();
     broadcastIfHost(get);
   },
 
@@ -691,6 +714,8 @@ export const useGameStore = create<GameStoreState & GameActions>((setOriginal, g
       actionDeadline: null,
       lastEvent: { type: 'info', message: `${player.name} passe sur ${space?.name || 'la case'}`, emoji: '⏭️' },
     });
+    // Clear timeout when player acts
+    get().clearTurnTimeout();
     broadcastIfHost(get);
   },
 
@@ -955,6 +980,8 @@ export const useGameStore = create<GameStoreState & GameActions>((setOriginal, g
         lastEvent: null,
       });
     }
+    // Start timeout for next player's turn
+    get().startTurnTimeout();
     broadcastIfHost(get);
   },
 
@@ -1312,5 +1339,80 @@ export const useGameStore = create<GameStoreState & GameActions>((setOriginal, g
     if (turnPhase === 'WAITING_FOR_DICE') get().rollDice();
     else if (turnPhase === 'WAITING_FOR_DECISION') get().skipPurchase();
     else if (turnPhase === 'IN_JAIL_DECISION') get().rollForJailBreak();
+  },
+
+  startTurnTimeout: () => {
+    const { networkRole, currentPlayerIndex, players } = get();
+    console.log(`[Timer] startTurnTimeout called - role: ${networkRole}, playerIndex: ${currentPlayerIndex}`);
+    
+    // Only host manages the actual timeout, but all players can see the timer
+    if (networkRole === 'host') {
+      // Clear existing timeout
+      if (turnTimeoutTimer) {
+        clearTimeout(turnTimeoutTimer);
+        turnTimeoutTimer = null;
+      }
+      
+      // Don't set timeout for bots
+      const currentPlayer = players[currentPlayerIndex];
+      if (currentPlayer?.isBot) {
+        console.log(`[Timer] Player ${currentPlayer.name} is bot, no timer`);
+        set({ turnTimeRemaining: null });
+        return;
+      }
+      
+      console.log(`[Timer] Starting 20s timer for player ${currentPlayer?.name}`);
+      // Record start time and set initial remaining time
+      turnTimeoutStart = Date.now();
+      set({ turnTimeRemaining: TURN_TIMEOUT_MS });
+      
+      // Update timer every 100ms and broadcast to clients
+      const updateInterval = setInterval(() => {
+        const elapsed = Date.now() - turnTimeoutStart;
+        const remaining = Math.max(0, TURN_TIMEOUT_MS - elapsed);
+        set({ turnTimeRemaining: remaining });
+        
+        // Broadcast timer update to clients
+        NetworkManager.broadcast({
+          type: 'TIMER_UPDATE',
+          payload: { turnTimeRemaining: remaining }
+        });
+        
+        if (remaining <= 0) {
+          clearInterval(updateInterval);
+        }
+      }, 100);
+      
+      // Set new timeout for 20 seconds
+      turnTimeoutTimer = setTimeout(() => {
+        clearInterval(updateInterval);
+        console.log(`[Timeout] 20s elapsed for player ${currentPlayer?.name}, auto-playing`);
+        get().handleTimeout();
+      }, TURN_TIMEOUT_MS);
+    } else {
+      // For clients, just show the timer without managing the timeout
+      const currentPlayer = players[currentPlayerIndex];
+      if (currentPlayer?.isBot) {
+        console.log(`[Timer] Client: Player ${currentPlayer.name} is bot, no timer`);
+        set({ turnTimeRemaining: null });
+      } else {
+        console.log(`[Timer] Client: Showing timer for player ${currentPlayer?.name}`);
+        set({ turnTimeRemaining: TURN_TIMEOUT_MS });
+      }
+    }
+  },
+
+  clearTurnTimeout: () => {
+    console.log(`[Timer] clearTurnTimeout called`);
+    if (turnTimeoutTimer) {
+      clearTimeout(turnTimeoutTimer);
+      turnTimeoutTimer = null;
+    }
+    set({ turnTimeRemaining: null });
+  },
+
+  setTurnTimeRemaining: (remaining: number | null) => {
+    console.log(`[Store] setTurnTimeRemaining called with:`, remaining);
+    set({ turnTimeRemaining: remaining });
   },
 };});

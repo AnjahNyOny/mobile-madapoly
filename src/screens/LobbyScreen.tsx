@@ -299,6 +299,10 @@ export const LobbyScreen = () => {
         setAppScreen('game');
       } else if (packet.type === 'STATE_UPDATE') {
         syncState(packet.payload);
+      } else if (packet.type === 'TIMER_UPDATE') {
+        // Update timer from host
+        console.log(`[Lobby] Received TIMER_UPDATE:`, packet.payload.turnTimeRemaining);
+        useGameStore.getState().setTurnTimeRemaining(packet.payload.turnTimeRemaining);
       } else if (packet.type === 'HOST_REJOINED') {
         // Host came back — dismiss disconnect modal if showing
         useGameStore.getState().setNetworkStatus('connected');
@@ -424,6 +428,17 @@ export const LobbyScreen = () => {
       NetworkManager.setTransport('tcp');
     } finally {
       setIsConnecting(false);
+    }
+  };
+
+  const handleDeleteRoom = () => {
+    if (roomCode) {
+      NetworkManager.deleteRoom(roomCode);
+      NetworkManager.cleanup();
+      setConnectedClients([]);
+      setRoomCode('');
+      clearSession();
+      setMode('select');
     }
   };
 
@@ -996,6 +1011,9 @@ export const LobbyScreen = () => {
             </TouchableOpacity>
             <TouchableOpacity style={styles.cancelLink} onPress={() => { NetworkManager.cleanup(); setConnectedClients([]); setRoomCode(''); setMode('select'); }}>
               <Text style={styles.cancelText}>Annuler</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={[styles.cancelLink, { marginTop: 8 }]} onPress={handleDeleteRoom}>
+              <Text style={[styles.cancelText, { color: COLORS.danger }]}>Supprimer la room</Text>
             </TouchableOpacity>
           </View>
         </ScrollView>

@@ -802,6 +802,11 @@ export const NetworkManager = {
     wsSocket.send(JSON.stringify({ type: 'REGISTER_PLAYER_ID', roomCode, localPlayerId }));
   },
 
+  deleteRoom(roomCode: string) {
+    if (!wsSocket || wsSocket.readyState !== WebSocket.OPEN) return;
+    wsSocket.send(JSON.stringify({ type: 'DELETE_ROOM', roomCode }));
+  },
+
   rejoinRoom(roomCode: string, localPlayerId: string, playerName: string, playerAvatar: string): Promise<void> {
     const MAX_ATTEMPTS = 3;
     const RETRY_DELAY_MS = 2000;

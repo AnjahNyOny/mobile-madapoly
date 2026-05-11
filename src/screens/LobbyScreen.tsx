@@ -393,14 +393,10 @@ export const LobbyScreen = () => {
       await NetworkManager.rejoinHost(session.roomCode);
       setRoomCode(session.roomCode);
       NetworkManager._startHostHeartbeat();
-      // Re-sync state to all clients still connected
-      const state = useGameStore.getState();
-      const { players, board, currentPlayerIndex, turnPhase, consecutiveDoubles, lastDiceRoll, actionDeadline, lastEvent, winCondition, chronoEndTime } = state;
-      NetworkManager.broadcast({ type: 'GAME_START', payload: { players, board, currentPlayerIndex, turnPhase, consecutiveDoubles, lastDiceRoll, actionDeadline, lastEvent, winCondition, chronoEndTime } });
       setConnectionError('');
       saveSession(session);
-      if (state.appScreen === 'game') setAppScreen('game');
-      else setMode('online_host');
+      // After host rejoin, we're back in lobby state (game state will be restored when clients rejoin)
+      setMode('online_host');
     } catch (e: any) {
       clearSession();
       setSavedSession(null);

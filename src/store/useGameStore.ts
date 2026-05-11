@@ -1343,7 +1343,7 @@ export const useGameStore = create<GameStoreState & GameActions>((setOriginal, g
 
   startTurnTimeout: () => {
     const { networkRole, currentPlayerIndex, players } = get();
-    console.log(`[Timer] startTurnTimeout called - role: ${networkRole}, playerIndex: ${currentPlayerIndex}`);
+    console.log(`⏰ [TIMER] startTurnTimeout called - role: ${networkRole}, playerIndex: ${currentPlayerIndex}`);
     
     // Only host manages the actual timeout, but all players can see the timer
     if (networkRole === 'host') {
@@ -1373,6 +1373,7 @@ export const useGameStore = create<GameStoreState & GameActions>((setOriginal, g
         set({ turnTimeRemaining: remaining });
         
         // Broadcast timer update to clients
+        console.log(`📡 [BROADCAST] TIMER_UPDATE: ${remaining}ms`);
         NetworkManager.broadcast({
           type: 'TIMER_UPDATE',
           payload: { turnTimeRemaining: remaining }

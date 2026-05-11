@@ -36,12 +36,28 @@ export const GameScreen = () => {
   // ── Bot AI: all auto-play logic is handled by this hook ──
   useBotLogic();
 
-  // ── Network message handler for timer updates ──
+  // ── Network message handler for all game messages ──
   useEffect(() => {
     const handleMessage = (packet: any, clientId?: string) => {
+      console.log(`[GameScreen] Received message type: ${packet.type}`);
+      
       if (packet.type === 'TIMER_UPDATE') {
         console.log(`[GameScreen] Received TIMER_UPDATE:`, packet.payload.turnTimeRemaining);
+        const state = useGameStore.getState();
+        console.log(`[GameScreen] Before update - turnTimeRemaining:`, state.turnTimeRemaining, 'currentPlayerIndex:', state.currentPlayerIndex);
         useGameStore.getState().setTurnTimeRemaining(packet.payload.turnTimeRemaining);
+        console.log(`[GameScreen] After update - turnTimeRemaining:`, useGameStore.getState().turnTimeRemaining);
+      }
+      
+      // Also handle other important messages that might be needed during gameplay
+      if (packet.type === 'STATE_UPDATE') {
+        console.log(`[GameScreen] Received STATE_UPDATE`);
+        useGameStore.getState().syncState(packet.payload);
+      }
+      
+      if (packet.type === 'GAME_START') {
+        console.log(`[GameScreen] Received GAME_START`);
+        useGameStore.getState().syncState(packet.payload);
       }
     };
 

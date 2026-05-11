@@ -11,6 +11,7 @@ import Animated, {
 import { useGameStore } from '../store/useGameStore';
 import { COLORS } from '../styles/theme';
 import { BOARD_SIZE, getTileCenter } from '../utils/mathHelpers';
+import { NetworkManager } from '../network/NetworkManager';
 
 import { BoardLayer } from '../components/board/BoardLayer';
 import { TokenLayer } from '../components/board/TokenLayer';
@@ -34,6 +35,22 @@ export const GameScreen = () => {
 
   // ── Bot AI: all auto-play logic is handled by this hook ──
   useBotLogic();
+
+  // ── Network message handler for timer updates ──
+  useEffect(() => {
+    const handleMessage = (packet: any, clientId?: string) => {
+      if (packet.type === 'TIMER_UPDATE') {
+        console.log(`[GameScreen] Received TIMER_UPDATE:`, packet.payload.turnTimeRemaining);
+        useGameStore.getState().setTurnTimeRemaining(packet.payload.turnTimeRemaining);
+      }
+    };
+
+    NetworkManager.onMessage(handleMessage);
+
+    return () => {
+      // Cleanup is handled by NetworkManager internally
+    };
+  }, []);
 
   // ─────────────────────────────────────────────────
   // CAMÉRA DYNAMIQUE : Shared values for board translation

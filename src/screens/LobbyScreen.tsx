@@ -296,6 +296,12 @@ export const LobbyScreen = () => {
 
       if (packet.type === 'GAME_START') {
         syncState(packet.payload);
+        // After rejoin, ensure localPlayerId is preserved (race condition fix)
+        const saved = loadSession();
+        if (saved && saved.localPlayerId !== 'host') {
+          const current = useGameStore.getState().localPlayerId;
+          if (!current) useGameStore.getState().setLocalPlayerId(saved.localPlayerId);
+        }
         setAppScreen('game');
       } else if (packet.type === 'STATE_UPDATE') {
         syncState(packet.payload);

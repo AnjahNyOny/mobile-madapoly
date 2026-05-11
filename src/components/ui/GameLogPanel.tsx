@@ -35,7 +35,7 @@ export const GameLogPanel = () => {
             {gameLog.length === 0 ? (
               <Text style={styles.emptyText}>Aucun événement pour le moment.</Text>
             ) : (
-              gameLog.map((log, index) => (
+              gameLog.filter(log => typeof log === 'string' && log).map((log, index) => (
                 <View key={index} style={styles.logItem}>
                   <Text style={styles.logText}>{log}</Text>
                 </View>

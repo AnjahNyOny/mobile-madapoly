@@ -24,7 +24,15 @@ export const JailPanel = () => {
   const currentPlayer = players[currentPlayerIndex];
   if (!currentPlayer) return null;
   if (turnPhase !== 'IN_JAIL_DECISION') return null;
-  if (currentPlayer.id !== localPlayerId) return null;
+  // Host/local controls all non-bot players; client only controls their own assigned player
+  const networkRole = useGameStore((s) => s.networkRole);
+  const connectedClients = useGameStore((s) => s.connectedClients);
+  const isHostOrLocal = networkRole === 'host' || networkRole === 'local';
+  const isRemoteClientPlayer = connectedClients.some(c => c.playerId === currentPlayer?.id);
+  const isLocalPlayer = isHostOrLocal
+    ? !currentPlayer?.isBot && !isRemoteClientPlayer
+    : currentPlayer?.id === localPlayerId;
+  if (!isLocalPlayer) return null;
 
   const canPayBail = currentPlayer.balance >= 50;
   const hasCard = currentPlayer.hasGetOutOfJailCard;

@@ -39,10 +39,16 @@ export const GameScreen = () => {
   // ── Network message handler for all game messages ──
   useEffect(() => {
     const handleMessage = (packet: any, clientId?: string) => {
+      // Dismiss disconnect modal when host is back or sends any state update
+      if (packet.type === 'HOST_REJOINED' || packet.type === 'STATE_UPDATE' || packet.type === 'GAME_START') {
+        useGameStore.getState().cancelHostGraceTimer();
+        useGameStore.getState().setNetworkStatus('connected');
+      }
+
       if (packet.type === 'TIMER_UPDATE') {
         useGameStore.getState().setTurnTimeRemaining(packet.payload.turnTimeRemaining);
       }
-      
+
       // Handle client requests on the host side
       if (useGameStore.getState().networkRole === 'host') {
         if (packet.type === 'REQUEST_ROLL_DICE') useGameStore.getState().rollDice();

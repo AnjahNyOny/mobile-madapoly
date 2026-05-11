@@ -35,10 +35,16 @@ export const PropertyModal = () => {
   const buyProperty = useGameStore((s) => s.buyProperty);
   const skipPurchase = useGameStore((s) => s.skipPurchase);
   const localPlayerId = useGameStore((s) => s.localPlayerId);
+  const networkRole = useGameStore((s) => s.networkRole);
+  const connectedClients = useGameStore((s) => s.connectedClients);
 
   const currentPlayer = players[currentPlayerIndex];
-  // Only show for the LOCAL human player (not for bots, not for other devices' players)
-  const isLocalPlayer = currentPlayer?.id === localPlayerId;
+  // Host/local controls all non-bot players; client only controls their own assigned player
+  const isHostOrLocal = networkRole === 'host' || networkRole === 'local';
+  const isRemoteClientPlayer = connectedClients.some(c => c.playerId === currentPlayer?.id);
+  const isLocalPlayer = isHostOrLocal
+    ? !currentPlayer?.isBot && !isRemoteClientPlayer
+    : currentPlayer?.id === localPlayerId;
   const isVisible = turnPhase === 'WAITING_FOR_DECISION' && currentPlayer && !currentPlayer.isBot && isLocalPlayer;
   const space = currentPlayer ? STATIC_BOARD[currentPlayer.position] : null;
   const shouldShow = isVisible && space;

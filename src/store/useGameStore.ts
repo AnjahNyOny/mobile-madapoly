@@ -12,6 +12,9 @@ let turnTimeoutTimer: any = null;
 let turnTimeoutStart: number = 0;
 const TURN_TIMEOUT_MS = 20000; // 20 seconds
 
+// ─── Host grace timer (client-side, global so GameScreen can cancel it) ───
+let hostGraceTimer: ReturnType<typeof setTimeout> | null = null;
+
 // ─── Connected client type (host-side, persisted across screen changes) ───
 export interface ConnectedClient {
   socketId: string;
@@ -67,6 +70,8 @@ interface GameActions {
   setAppScreen: (screen: 'lobby' | 'game') => void;
   resetToLobby: () => void;
   setConnectedClients: (clients: ConnectedClient[] | ((prev: ConnectedClient[]) => ConnectedClient[])) => void;
+  startHostGraceTimer: () => void;
+  cancelHostGraceTimer: () => void;
   
   // ── UI Modal States ──
   setSelectedPlayerIdForProps: (id: string | null) => void;
@@ -322,6 +327,23 @@ export const useGameStore = create<GameStoreState & GameActions>((setOriginal, g
       appScreen: 'lobby',
       connectedClients: [],
     });
+    // Cancel any pending host grace timer
+    if (hostGraceTimer) { clearTimeout(hostGraceTimer); hostGraceTimer = null; }
+  },
+
+  startHostGraceTimer: () => {
+    if (hostGraceTimer) clearTimeout(hostGraceTimer);
+    hostGraceTimer = setTimeout(() => {
+      hostGraceTimer = null;
+      useGameStore.getState().setNetworkStatus('host_disconnected');
+    }, 60000);
+  },
+
+  cancelHostGraceTimer: () => {
+    if (hostGraceTimer) {
+      clearTimeout(hostGraceTimer);
+      hostGraceTimer = null;
+    }
   },
 
   initGame: (playersSetup) => {

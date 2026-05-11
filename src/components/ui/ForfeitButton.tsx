@@ -13,10 +13,16 @@ export const ForfeitButton = () => {
   const forfeit = useGameStore((s) => s.forfeit);
   const turnPhase = useGameStore((s) => s.turnPhase);
   const localPlayerId = useGameStore((s) => s.localPlayerId);
+  const networkRole = useGameStore((s) => s.networkRole);
+  const currentPlayerIndex = useGameStore((s) => s.currentPlayerIndex);
   const players = useGameStore((s) => s.players);
 
-  const localPlayer = players.find(p => p.id === localPlayerId);
-  
+  const currentPlayer = players[currentPlayerIndex];
+  const isHostOrLocal = networkRole === 'host' || networkRole === 'local';
+  // Host can forfeit any non-bot human player; client can only forfeit themselves
+  const controlledPlayerId = isHostOrLocal ? currentPlayer?.id : localPlayerId;
+  const localPlayer = players.find(p => p.id === controlledPlayerId);
+
   // Don't show if game is over or player is already bankrupt
   if (turnPhase === 'GAME_OVER') return null;
   if (localPlayer?.isBankrupt) return null;

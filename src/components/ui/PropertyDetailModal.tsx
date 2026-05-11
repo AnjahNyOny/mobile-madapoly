@@ -16,6 +16,8 @@ export const PropertyDetailModal = () => {
   const sellHouse = useGameStore(s => s.sellHouse);
   const mortgageProperty = useGameStore(s => s.mortgageProperty);
   const unmortgageProperty = useGameStore(s => s.unmortgageProperty);
+  const networkRole = useGameStore(s => s.networkRole);
+  const connectedClients = useGameStore(s => s.connectedClients);
 
   if (!selectedSpaceId) return null;
 
@@ -25,8 +27,16 @@ export const PropertyDetailModal = () => {
   const record = board[space.id];
   const owner = record?.ownerId ? players.find(p => p.id === record.ownerId) : null;
   const isOwned = !!owner;
-  const isMine = isOwned && owner?.id === localPlayerId;
-  const isMyTurn = players[currentPlayerIndex]?.id === localPlayerId;
+  const isHostOrLocal = networkRole === 'host' || networkRole === 'local';
+  const currentPlayer = players[currentPlayerIndex];
+  const isRemoteClientPlayer = connectedClients.some(c => c.playerId === currentPlayer?.id);
+  // isMine: host considers all their non-bot player properties as "theirs"
+  const isMine = isHostOrLocal
+    ? isOwned && owner && !owner.isBot
+    : isOwned && owner?.id === localPlayerId;
+  const isMyTurn = isHostOrLocal
+    ? !currentPlayer?.isBot && !isRemoteClientPlayer
+    : currentPlayer?.id === localPlayerId;
 
   const hasMono = isMine && space.type === 'property' && space.color ? hasMonopoly(owner.id, space.color, board) : false;
   const canBuild = hasMono && isMyTurn && record.houseCount < 5 && owner.balance >= (space.buildCost || 0) && !record.isMortgaged;

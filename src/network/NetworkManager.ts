@@ -631,19 +631,24 @@ export const NetworkManager = {
     }
 
     if (packet.type === 'HOST_LEFT') {
-      console.warn(`[Client/WS] HOST_LEFT — host disconnected, keeping connection open for possible rejoin`);
-      // Do NOT close WebSocket — host may refresh and reclaim the room
+      console.warn(`[Client/WS] HOST_LEFT — host disconnected, stopping heartbeat, keeping WS open for rejoin`);
+      // Stop heartbeat so client does not timeout the host before grace period expires
+      NetworkManager._stopClientHeartbeat();
       if (onDisconnectCallback) onDisconnectCallback('host_left');
       return;
     }
 
     if (packet.type === 'HOST_REJOINED') {
-      console.log(`[Client/WS] HOST_REJOINED — host is back`);
+      console.log(`[Client/WS] HOST_REJOINED — host is back, restarting heartbeat`);
+      // Restart heartbeat so we can detect future host drops again
+      NetworkManager._startClientHeartbeat();
       if (onMessageCallback) onMessageCallback(packet, 'host');
       return;
     }
 
-    console.log(`[Client/WS] Received:`, packet.type);
+    if (packet.type !== 'TIMER_UPDATE') {
+      console.log(`[Client/WS] Received:`, packet.type);
+    }
     if (onMessageCallback) onMessageCallback(packet, 'host');
   },
 
@@ -681,6 +686,7 @@ export const NetworkManager = {
     wsRoomCode = null;
     wsLocalSocketId = null;
     wsConnectedClients.clear();
+    clientLastPingTimestamp.clear();
   },
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -872,7 +878,6 @@ export const NetworkManager = {
             didResolve = true;
             wsRoomCode = (packet as any).roomCode;
             wsLocalSocketId = (packet as any).socketId;
-            console.log(`[Client/WS] Rejoin accepted for room ${wsRoomCode}`);
             resolve();
             wsSocket!.onmessage = NetworkManager._wsClientMessageHandler;
             return;

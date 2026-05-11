@@ -119,3 +119,7 @@ Voici la configuration matérielle et réseau utilisée pour valider le code :
 * pour arreter les processus : `pkill -f "expo start" ; pkill -f "relay-server/server.js" ; pkill -f "node server.js"`
 * 
 * **Relay de production (Render) :** `wss://mobile-madapoly.onrender.com` — utilisé automatiquement en mode release (`__DEV__ === false`). ⚠️ Le service Render gratuit dort après 15 min d'inactivité : la première connexion peut prendre ~30s.
+npx expo export -p web
+ssh liantsoa@babacode.ca "sudo chown -R liantsoa:liantsoa /var/www/mobile-madapoly"
+scp dist/_expo/static/js/web/index-*.js liantsoa@babacode.ca:/var/www/mobile-madapoly/_expo/static/js/web/
+scp dist/index.html liantsoa@babacode.ca:/var/www/mobile-madapoly/ssh liantsoa@babacode.ca "sudo chown -R www-data:www-data /var/www/mobile-madapoly"

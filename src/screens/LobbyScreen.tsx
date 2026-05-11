@@ -88,9 +88,7 @@ export const LobbyScreen = () => {
   const [savedSession, setSavedSession] = useState<import('../utils/sessionStorage').SavedSession | null>(null);
   // Map playerId → timer for grace-period bankruptcy
   const bankruptcyTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
-  // Grace period timer before showing host-disconnected modal
-  const hostGraceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  
+
   const setNetworkRole = useGameStore(s => s.setNetworkRole);
   const setLocalPlayerId = useGameStore(s => s.setLocalPlayerId);
   const setLocalPlayerInfo = useGameStore(s => s.setLocalPlayerInfo);
@@ -102,6 +100,8 @@ export const LobbyScreen = () => {
   const appScreen = useGameStore(s => s.appScreen);
   const setWinCondition = useGameStore(s => s.setWinCondition);
   const winCondition = useGameStore(s => s.winCondition);
+  const startHostGraceTimer = useGameStore(s => s.startHostGraceTimer);
+  const cancelHostGraceTimer = useGameStore(s => s.cancelHostGraceTimer);
 
   const fetchLiveRooms = async () => {
     setIsFetchingRooms(true);
@@ -150,8 +150,11 @@ export const LobbyScreen = () => {
       // Host refresh: silently try to reclaim the room
       handleHostRejoin(session);
     } else {
-      // Client refresh: refresh room list so Reprendre button appears
-      fetchLiveRooms();
+      // Client refresh: try to auto-rejoin immediately (like host)
+      handleRejoin(session).catch(() => {
+        // If auto-rejoin fails, fetch rooms so Reprendre button appears
+        fetchLiveRooms();
+      });
     }
   }, []);
 
@@ -213,21 +216,22 @@ export const LobbyScreen = () => {
     });
 
     NetworkManager.onDisconnect((clientId) => {
-      console.log(`[Lobby] onDisconnect fired: clientId=${clientId}`);
       const storeState = useGameStore.getState();
       const allClients = storeState.connectedClients;
-      console.log(`[Lobby] connectedClients in store:`, JSON.stringify(allClients.map(c => c.socketId)));
       const client = allClients.find(c => c.socketId === clientId);
-      console.log(`[Lobby] matched client:`, client ? client.playerId : 'NOT FOUND');
 
       if (clientId !== 'host' && clientId !== 'host_left' && client) {
         if (storeState.appScreen === 'game' && storeState.networkRole === 'host') {
-          console.log(`[Lobby] Client ${client.playerId} disconnected — 20s grace period before bankruptcy`);
-          // Give the client 20s to rejoin before declaring bankruptcy
+            // Give the client 20s to rejoin before declaring bankruptcy
           const playerId = client.playerId;
           const timer = setTimeout(() => {
             bankruptcyTimers.current.delete(playerId);
-            console.log(`[Lobby] Grace period expired — triggering bankruptcy for ${playerId}`);
+            // Defensive: if player reconnected via JOIN_REQUEST (new socketId), skip bankruptcy
+            const currentState = useGameStore.getState();
+            const isReconnected = currentState.connectedClients.some(c => c.playerId === playerId);
+            if (isReconnected) {
+              return;
+            }
             useGameStore.getState().handleBankruptcy(playerId, null);
           }, 20_000);
           bankruptcyTimers.current.set(playerId, timer);
@@ -254,11 +258,7 @@ export const LobbyScreen = () => {
         const { appScreen } = useGameStore.getState();
         if (appScreen === 'game') {
           // Give host 60s grace period to refresh/reconnect before showing modal
-          if (hostGraceTimer.current) clearTimeout(hostGraceTimer.current);
-          hostGraceTimer.current = setTimeout(() => {
-            const status = clientId === 'host_left' ? 'host_disconnected' : 'disconnected';
-            useGameStore.getState().setNetworkStatus(status);
-          }, 60000);
+          startHostGraceTimer();
         } else {
           // In lobby: clear session, show error and go back to select
           clearSession();
@@ -303,13 +303,13 @@ export const LobbyScreen = () => {
 
       if (packet.type === 'GAME_START') {
         // Host is back — cancel any pending disconnect timer
-        if (hostGraceTimer.current) { clearTimeout(hostGraceTimer.current); hostGraceTimer.current = null; }
+        cancelHostGraceTimer();
         useGameStore.getState().setNetworkStatus('connected');
         syncState(packet.payload);
         setAppScreen('game');
       } else if (packet.type === 'STATE_UPDATE') {
         // Host is back — cancel any pending disconnect timer
-        if (hostGraceTimer.current) { clearTimeout(hostGraceTimer.current); hostGraceTimer.current = null; }
+        cancelHostGraceTimer();
         useGameStore.getState().setNetworkStatus('connected');
         syncState(packet.payload);
       } else if (packet.type === 'TIMER_UPDATE') {
@@ -317,7 +317,7 @@ export const LobbyScreen = () => {
         useGameStore.getState().setTurnTimeRemaining(packet.payload.turnTimeRemaining);
       } else if (packet.type === 'HOST_REJOINED') {
         // Host came back — cancel grace timer and dismiss disconnect modal if showing
-        if (hostGraceTimer.current) { clearTimeout(hostGraceTimer.current); hostGraceTimer.current = null; }
+        cancelHostGraceTimer();
         useGameStore.getState().setNetworkStatus('connected');
       }
 
@@ -379,15 +379,33 @@ export const LobbyScreen = () => {
       if (timer) {
         clearTimeout(timer);
         bankruptcyTimers.current.delete(localPlayerId);
-        console.log(`[Lobby] Bankruptcy timer cancelled — ${localPlayerId} rejoined`);
       }
-      // Update socketId in connectedClients to new socket
-      setConnectedClients(prev => prev.map(c =>
-        c.playerId === localPlayerId ? { ...c, socketId: newSocketId } : c
-      ));
+      // Update socketId in connectedClients to new socket (or add back if removed)
+      setConnectedClients(prev => {
+        const exists = prev.some(c => c.playerId === localPlayerId);
+        if (exists) {
+          return prev.map(c => c.playerId === localPlayerId ? { ...c, socketId: newSocketId } : c);
+        }
+        return [...prev, { socketId: newSocketId, playerId: localPlayerId }];
+      });
 
+      // Reset consecutive timeouts so they don't get bankrupt on reconnect
       const state = useGameStore.getState();
-      const { players, board, currentPlayerIndex, turnPhase, consecutiveDoubles, lastDiceRoll, actionDeadline, lastEvent, winCondition, chronoEndTime } = state;
+      const { players: allPlayers, currentPlayerIndex: currentIdx } = state;
+      const rejoinedPlayerIdx = allPlayers.findIndex(p => p.id === localPlayerId);
+      if (rejoinedPlayerIdx >= 0 && allPlayers[rejoinedPlayerIdx].consecutiveTimeouts > 0) {
+        const newPlayers = [...allPlayers];
+        newPlayers[rejoinedPlayerIdx] = { ...newPlayers[rejoinedPlayerIdx], consecutiveTimeouts: 0 };
+        state.syncState({ players: newPlayers });
+      }
+      // Restart turn timeout if it's this player's turn
+      if (rejoinedPlayerIdx === currentIdx) {
+        state.clearTurnTimeout();
+        state.startTurnTimeout();
+      }
+
+      const state2 = useGameStore.getState();
+      const { players, board, currentPlayerIndex, turnPhase, consecutiveDoubles, lastDiceRoll, actionDeadline, lastEvent, winCondition, chronoEndTime } = state2;
       
       // Ensure all players have consecutiveTimeouts property
       const playersWithTimeouts = players.map(player => ({
@@ -399,7 +417,6 @@ export const LobbyScreen = () => {
         type: 'GAME_START',
         payload: { players: playersWithTimeouts, board, currentPlayerIndex, turnPhase, consecutiveDoubles, lastDiceRoll, actionDeadline, lastEvent, winCondition, chronoEndTime }
       });
-      console.log(`[Lobby] Re-synced state to rejoined player ${localPlayerId} (${newSocketId})`);
     });
 
     // We DO NOT close the server or disconnect on unmount, 

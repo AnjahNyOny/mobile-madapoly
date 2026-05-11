@@ -271,6 +271,7 @@ export const LobbyScreen = () => {
     });
 
     NetworkManager.onJoinRequest((socketId, playerName, playerAvatar) => {
+      console.log(`[Lobby] JOIN REQUEST received: ${playerName} (${socketId})`);
       setPendingRequests(prev => {
         if (prev.find(r => r.socketId === socketId)) return prev;
         return [...prev, { socketId, playerName, playerAvatar }];

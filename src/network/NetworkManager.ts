@@ -504,6 +504,8 @@ export const NetworkManager = {
         }
       }, CONNECT_TIMEOUT_MS);
 
+      let approvalTimeout: ReturnType<typeof setTimeout> | null = null;
+
       wsSocket.onopen = () => {
         clearTimeout(timeout);
         console.log(`[Client/WS] Connected to relay, sending join request for room ${roomCode}...`);
@@ -513,6 +515,13 @@ export const NetworkManager = {
           playerName: playerName || 'Joueur',
           playerAvatar: playerAvatar || '🎩',
         }));
+        // Separate approval timeout — host has 90s to approve
+        approvalTimeout = setTimeout(() => {
+          if (didResolve) return;
+          didResolve = true;
+          wsSocket?.close();
+          reject(new Error('L\'hôte n\'a pas répondu à temps. Veuillez réessayer.'));
+        }, 90_000);
       };
 
       wsSocket.onmessage = (event) => {
@@ -526,6 +535,7 @@ export const NetworkManager = {
         if (packet.type === 'JOIN_ACCEPTED') {
           didResolve = true;
           clearTimeout(timeout);
+          if (approvalTimeout) { clearTimeout(approvalTimeout); approvalTimeout = null; }
           wsRoomCode = (packet as any).roomCode;
           wsLocalSocketId = (packet as any).socketId;
           console.log(`[Client/WS] Join accepted for room ${wsRoomCode} as ${wsLocalSocketId}`);
@@ -537,6 +547,7 @@ export const NetworkManager = {
         if (packet.type === 'JOIN_REJECTED') {
           didResolve = true;
           clearTimeout(timeout);
+          if (approvalTimeout) { clearTimeout(approvalTimeout); approvalTimeout = null; }
           reject(new Error((packet as any).reason || 'Demande refusée par l\'hôte'));
           wsSocket?.close();
           return;
@@ -545,6 +556,7 @@ export const NetworkManager = {
         if (packet.type === 'JOIN_ERROR') {
           didResolve = true;
           clearTimeout(timeout);
+          if (approvalTimeout) { clearTimeout(approvalTimeout); approvalTimeout = null; }
           reject(new Error((packet as any).reason || 'Cannot join room'));
           wsSocket?.close();
           return;

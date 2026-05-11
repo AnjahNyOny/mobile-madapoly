@@ -4,6 +4,7 @@ import { COLORS, SPACING, BORDER_RADIUS } from '../styles/theme';
 import { NetworkManager } from '../network/NetworkManager';
 import { useGameStore, ConnectedClient } from '../store/useGameStore';
 import { RELAY_URL, RELAY_HTTP_URL } from '../constants/config';
+import { saveSession, loadSession, clearSession } from '../utils/sessionStorage';
 
 type LobbyMode = 'select' | 'host' | 'client' | 'online_host' | 'online_client';
 
@@ -84,6 +85,7 @@ export const LobbyScreen = () => {
   const [isFetchingRooms, setIsFetchingRooms] = useState(false);
   const [onlineRoomName, setOnlineRoomName] = useState<string>('');
   const [pendingRequests, setPendingRequests] = useState<{ socketId: string; playerName: string; playerAvatar: string }[]>([]);
+  const [savedSession, setSavedSession] = useState<import('../utils/sessionStorage').SavedSession | null>(null);
   
   const setNetworkRole = useGameStore(s => s.setNetworkRole);
   const setLocalPlayerId = useGameStore(s => s.setLocalPlayerId);
@@ -109,6 +111,35 @@ export const LobbyScreen = () => {
       setIsFetchingRooms(false);
     }
   };
+
+  const handleRejoin = async (session: import('../utils/sessionStorage').SavedSession) => {
+    setIsConnecting(true);
+    setConnectionError('Reconnexion en cours...');
+    NetworkManager.setTransport('websocket', RELAY_URL);
+    try {
+      await NetworkManager.rejoinRoom(session.roomCode, session.localPlayerId, session.playerName, session.playerAvatar);
+      useGameStore.getState().setLocalPlayerId(session.localPlayerId);
+      setNetworkRole('client', 'client-' + Date.now());
+      setMode('online_client');
+      setConnectionError('');
+      saveSession(session);
+    } catch (e: any) {
+      clearSession();
+      setSavedSession(null);
+      setConnectionError(e?.message || 'Impossible de reprendre la partie.');
+      NetworkManager.setTransport('tcp');
+    } finally {
+      setIsConnecting(false);
+    }
+  };
+
+  // ── Auto-rejoin: detect saved session on mount ──
+  useEffect(() => {
+    const session = loadSession();
+    if (!session) return;
+    setSavedSession(session);
+    fetchLiveRooms();
+  }, []);
 
   const handleApprove = (socketId: string) => {
     NetworkManager.approveJoin(socketId);
@@ -225,6 +256,9 @@ export const LobbyScreen = () => {
         const state = useGameStore.getState();
         const rc = NetworkManager.getRoomCode();
         if (rc) NetworkManager.registerPlayerId(rc, playerId);
+
+        // Persist session so page refresh can auto-rejoin
+        if (rc) saveSession({ roomCode: rc, localPlayerId: playerId, playerName: state.localPlayerName, playerAvatar: state.localPlayerAvatar });
 
         NetworkManager.sendMessage({
           type: 'SET_PLAYER_INFO',
@@ -345,8 +379,11 @@ export const LobbyScreen = () => {
     try {
       await NetworkManager.joinRoom(code, localPlayerName, localPlayerAvatar);
       setMode('online_client');
+      const playerId = useGameStore.getState().localPlayerId;
       setNetworkRole('client', 'client-' + Date.now());
       setConnectionError('');
+      // Persist session for page refresh recovery
+      if (playerId) saveSession({ roomCode: code, localPlayerId: playerId, playerName: localPlayerName, playerAvatar: localPlayerAvatar });
     } catch (e: any) {
       setConnectionError(e?.message || 'Connexion impossible. Vérifiez le code.');
       NetworkManager.setTransport('tcp');
@@ -747,7 +784,12 @@ export const LobbyScreen = () => {
                     </View>
                   </View>
                   <View style={{ gap: 6, alignItems: 'flex-end' }}>
-                    {room.status === 'lobby' && (
+                    {savedSession?.roomCode === room.roomCode && (
+                      <TouchableOpacity style={[styles.joinBtn, { backgroundColor: COLORS.madaGreen }]} disabled={isConnecting} onPress={() => handleRejoin(savedSession!)}>
+                        <Text style={styles.joinBtnText}>▶ Reprendre</Text>
+                      </TouchableOpacity>
+                    )}
+                    {room.status === 'lobby' && savedSession?.roomCode !== room.roomCode && (
                       <TouchableOpacity style={styles.joinBtn} disabled={isConnecting} onPress={async () => {
                         setClientInputRoomCode(room.roomCode);
                         setIsConnecting(true);
@@ -756,8 +798,31 @@ export const LobbyScreen = () => {
                         try {
                           await NetworkManager.joinRoom(room.roomCode, localPlayerName, localPlayerAvatar);
                           setMode('online_client');
+                          const playerId = useGameStore.getState().localPlayerId;
                           setNetworkRole('client', 'client-' + Date.now());
                           setConnectionError('');
+                          if (playerId) saveSession({ roomCode: room.roomCode, localPlayerId: playerId, playerName: localPlayerName, playerAvatar: localPlayerAvatar });
+                        } catch (e: any) {
+                          setConnectionError(e?.message || 'Connexion impossible.');
+                          NetworkManager.setTransport('tcp');
+                        } finally { setIsConnecting(false); }
+                      }}>
+                        <Text style={styles.joinBtnText}>Rejoindre</Text>
+                      </TouchableOpacity>
+                    )}
+                    {room.status === 'lobby' && savedSession?.roomCode === room.roomCode && (
+                      <TouchableOpacity style={styles.joinBtn} disabled={isConnecting} onPress={async () => {
+                        setClientInputRoomCode(room.roomCode);
+                        setIsConnecting(true);
+                        setConnectionError('En attente d\'approbation de l\'hôte...');
+                        NetworkManager.setTransport('websocket', RELAY_URL);
+                        try {
+                          await NetworkManager.joinRoom(room.roomCode, localPlayerName, localPlayerAvatar);
+                          setMode('online_client');
+                          const playerId = useGameStore.getState().localPlayerId;
+                          setNetworkRole('client', 'client-' + Date.now());
+                          setConnectionError('');
+                          if (playerId) saveSession({ roomCode: room.roomCode, localPlayerId: playerId, playerName: localPlayerName, playerAvatar: localPlayerAvatar });
                         } catch (e: any) {
                           setConnectionError(e?.message || 'Connexion impossible.');
                           NetworkManager.setTransport('tcp');
@@ -892,7 +957,7 @@ export const LobbyScreen = () => {
             <PlayerSlot avatar={localPlayerAvatar} name={localPlayerName} role="Connecté ✓" />
             <ActivityIndicator size="large" color={COLORS.primary} style={{ marginVertical: 30 }} />
             <Text style={styles.waitText}>En attente de l'hôte…</Text>
-            <TouchableOpacity style={styles.cancelLink} onPress={() => { NetworkManager.cleanup(); setMode('select'); }}>
+            <TouchableOpacity style={styles.cancelLink} onPress={() => { clearSession(); setSavedSession(null); NetworkManager.cleanup(); setMode('select'); }}>
               <Text style={styles.cancelText}>Quitter</Text>
             </TouchableOpacity>
           </View>

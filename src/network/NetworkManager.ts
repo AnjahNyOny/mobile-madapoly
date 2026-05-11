@@ -396,6 +396,8 @@ export const NetworkManager = {
         NetworkManager._stopHostHeartbeat();
         wsSocket = null;
         wsRoomCode = null;
+        // Notify host UI so it can show reconnect option
+        if (onDisconnectCallback) onDisconnectCallback('relay_closed');
       };
     });
   },

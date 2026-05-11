@@ -234,6 +234,15 @@ const wss = new WebSocketServer({ server: httpServer });
 
 httpServer.listen(PORT, () => {
   console.log(`[Relay] Madapoly relay server running on ws://0.0.0.0:${PORT} (HTTP+WS)`);
+
+  // Self-ping every 14 min to prevent Render free tier from sleeping
+  const SELF_URL = process.env.RENDER_EXTERNAL_URL || `http://localhost:${PORT}`;
+  const selfPingModule = SELF_URL.startsWith('https') ? require('https') : require('http');
+  setInterval(() => {
+    selfPingModule.get(`${SELF_URL}/health`, (r) => {
+      console.log(`[Relay] Self-ping: ${r.statusCode}`);
+    }).on('error', (e) => console.warn(`[Relay] Self-ping failed: ${e.message}`));
+  }, 14 * 60 * 1000);
 });
 
 wss.on('connection', (ws) => {
@@ -354,8 +363,10 @@ wss.on('connection', (ws) => {
       const hostWs = roomHosts.get(roomCode);
       if (hostWs) {
         send(hostWs, { type: 'JOIN_REQUEST_RECEIVED', socketId: meta.socketId, playerName: playerName || 'Joueur', playerAvatar: playerAvatar || '🎩', roomCode });
+        console.log(`[Relay] JOIN_REQUEST from ${meta.socketId} (${playerName}) → notified host for room ${roomCode}`);
+      } else {
+        console.warn(`[Relay] JOIN_REQUEST from ${meta.socketId} — NO HOST found for room ${roomCode}`);
       }
-      console.log(`[Relay] Join request from ${meta.socketId} (${playerName}) for room ${roomCode}`);
       return;
     }
 

@@ -186,6 +186,19 @@ export const LobbyScreen = () => {
 
       setConnectedClients((prev) => prev.filter(c => c.socketId !== clientId));
 
+      if (clientId === 'relay_closed') {
+        // Our relay connection dropped (host side) — try to recreate the room
+        const { appScreen } = useGameStore.getState();
+        if (appScreen === 'lobby') {
+          setConnectionError('Connexion relay perdue. Recréation de la room...');
+          NetworkManager.setTransport('websocket', RELAY_URL);
+          NetworkManager.createRoom(undefined)
+            .then((code) => { setRoomCode(code); setConnectionError(''); })
+            .catch(() => { setConnectionError('Relay inaccessible. Réessayez.'); setMode('select'); });
+        }
+        return;
+      }
+
       if (clientId === 'host' || clientId === 'host_left') {
         // We were a client and the host disconnected
         const { appScreen } = useGameStore.getState();

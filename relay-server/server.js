@@ -112,6 +112,38 @@ function dissolveRoom(roomCode, reason) {
   if (t2) { clearTimeout(t2); hostGoneTimers.delete(roomCode); }
 }
 
+function deleteRoom(roomCode, reason) {
+  console.log(`[Relay] Deleting room ${roomCode}: ${reason}`);
+  // Notify all players and spectators
+  broadcastToRoom(roomCode, { type: 'ROOM_DELETED', reason });
+  broadcastToSpectators(roomCode, { type: 'ROOM_DELETED', reason });
+  
+  // Clean up all room data
+  dissolveRoom(roomCode, reason);
+}
+
+function checkRoomCleanup(roomCode) {
+  const room = rooms.get(roomCode);
+  const host = roomHosts.get(roomCode);
+  
+  // If no host and no players, delete the room immediately
+  if (!host && (!room || room.size === 0)) {
+    deleteRoom(roomCode, 'empty_no_host');
+    return true;
+  }
+  
+  // If only host exists and no players for more than 2 minutes, delete
+  if (host && room && room.size === 0) {
+    const createdAt = roomCreatedAt.get(roomCode);
+    if (createdAt && Date.now() - createdAt > 120000) { // 2 minutes
+      deleteRoom(roomCode, 'host_only_timeout');
+      return true;
+    }
+  }
+  
+  return false;
+}
+
 function scheduleHostGoneTimeout(roomCode) {
   const existing = hostGoneTimers.get(roomCode);
   if (existing) clearTimeout(existing);
@@ -154,15 +186,21 @@ function leaveRoom(ws) {
       console.log(`[Relay] Host ${socketId} left room ${roomCode} (${room.size} clients remaining)`);
       broadcastToRoom(roomCode, { type: 'HOST_LEFT', socketId });
       broadcastToSpectators(roomCode, { type: 'HOST_LEFT', socketId });
-      if (room.size === 0) {
-        scheduleRoomCleanup(roomCode);
-      } else {
-        scheduleHostGoneTimeout(roomCode);
+      
+      // Check if room should be cleaned up immediately
+      if (!checkRoomCleanup(roomCode)) {
+        if (room.size === 0) {
+          scheduleRoomCleanup(roomCode);
+        } else {
+          scheduleHostGoneTimeout(roomCode);
+        }
       }
     } else {
       broadcastToRoom(roomCode, { type: 'PLAYER_LEFT', socketId });
       console.log(`[Relay] ${socketId} left room ${roomCode} (${room.size} remaining)`);
-      if (room.size === 0) {
+      
+      // Check if room should be cleaned up immediately
+      if (!checkRoomCleanup(roomCode) && room.size === 0) {
         scheduleRoomCleanup(roomCode);
       }
     }
@@ -472,6 +510,22 @@ wss.on('connection', (ws) => {
       return;
     }
 
+    if (type === 'DELETE_ROOM') {
+      // Host requests to delete their room
+      const { roomCode } = packet;
+      if (!roomCode) return;
+
+      const hostWs = roomHosts.get(roomCode);
+      if (hostWs !== ws) { 
+        console.warn(`[Relay] Non-host tried to delete room ${roomCode}`);
+        return; 
+      }
+
+      console.log(`[Relay] Host requested deletion of room ${roomCode}`);
+      deleteRoom(roomCode, 'host_requested');
+      return;
+    }
+
     if (type === 'REGISTER_PLAYER_ID') {
       // Called by host/client after ASSIGN_PLAYER_ID to map localPlayerId → relaySocketId
       const { roomCode: rc, localPlayerId } = packet;
@@ -618,6 +672,30 @@ const heartbeatInterval = setInterval(() => {
     ws.ping();
   });
 }, 30000);
+
+// ── Automatic room cleanup interval ──
+setInterval(() => {
+  const now = Date.now();
+  
+  // Check all rooms for cleanup
+  for (const roomCode of rooms.keys()) {
+    checkRoomCleanup(roomCode);
+  }
+  
+  // Additional cleanup for very old rooms (older than 1 hour)
+  for (const [roomCode, createdAt] of roomCreatedAt.entries()) {
+    if (now - createdAt > 3600000) { // 1 hour
+      const room = rooms.get(roomCode);
+      const host = roomHosts.get(roomCode);
+      
+      // Delete very old rooms even if they have a host but no players
+      if (host && (!room || room.size === 0)) {
+        console.log(`[Relay] Deleting very old empty room ${roomCode} (${Math.round((now - createdAt) / 60000)}min old)`);
+        deleteRoom(roomCode, 'very_old_empty');
+      }
+    }
+  }
+}, 30000); // Check every 30 seconds
 
 wss.on('close', () => {
   clearInterval(heartbeatInterval);

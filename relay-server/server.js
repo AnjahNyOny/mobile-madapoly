@@ -178,9 +178,30 @@ function scheduleRoomCleanup(roomCode) {
   const timer = setTimeout(() => {
     const room = rooms.get(roomCode);
     if (!room || room.size === 0) {
-      rooms.delete(roomCode);
+      // Don't delete the room immediately - keep it for reconnection
+      // Just clear the actual WebSocket set but keep the room structure
+      if (room) room.clear();
       roomTimers.delete(roomCode);
-      console.log(`[Relay] Room ${roomCode} cleaned up (idle)`);
+      console.log(`[Relay] Room ${roomCode} emptied (keeping structure for reconnection)`);
+      
+      // Schedule full cleanup after a longer period
+      const fullCleanupTimer = setTimeout(() => {
+        const playerIds = roomPlayerIds.get(roomCode);
+        if (playerIds && playerIds.size === 0) {
+          // Only fully dissolve if no playerIds are registered
+          rooms.delete(roomCode);
+          roomHosts.delete(roomCode);
+          roomPlayerIds.delete(roomCode);
+          roomSpectators.delete(roomCode);
+          roomCreatedAt.delete(roomCode);
+          roomNames.delete(roomCode);
+          roomStatus.delete(roomCode);
+          pendingJoinRequests.delete(roomCode);
+          console.log(`[Relay] Room ${roomCode} fully dissolved (no players for 5 minutes)`);
+        }
+      }, 300000); // 5 minutes for full cleanup
+      
+      roomTimers.set(roomCode, fullCleanupTimer);
     }
   }, ROOM_TTL_MS);
 

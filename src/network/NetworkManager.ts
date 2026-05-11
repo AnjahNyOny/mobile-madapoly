@@ -882,6 +882,60 @@ export const NetworkManager = {
     });
   },
 
+  rejoinHost(roomCode: string): Promise<void> {
+    return new Promise((resolve, reject) => {
+      NetworkManager._wsCleanup();
+      try {
+        wsSocket = new WebSocket(relayUrl);
+      } catch (e) {
+        reject(new Error('WebSocket not available'));
+        return;
+      }
+
+      const timeout = setTimeout(() => {
+        wsSocket?.close();
+        reject(new Error('Relay inaccessible.'));
+      }, 20_000);
+
+      wsSocket.onopen = () => {
+        wsSocket!.send(JSON.stringify({ type: 'REJOIN_HOST', roomCode }));
+      };
+
+      wsSocket.onmessage = (event) => {
+        let packet: NetworkPacket;
+        try { packet = JSON.parse(event.data as string); } catch { return; }
+
+        if (packet.type === 'REJOIN_HOST_ACCEPTED') {
+          clearTimeout(timeout);
+          wsRoomCode = (packet as any).roomCode;
+          wsLocalSocketId = (packet as any).socketId;
+          console.log(`[Host/WS] Reclaimed room ${wsRoomCode}`);
+          wsSocket!.onmessage = NetworkManager._wsHostMessageHandler.bind(NetworkManager);
+          wsSocket!.onclose = () => {
+            console.log('[Host/WS] Relay connection closed');
+            NetworkManager._stopHostHeartbeat();
+            wsSocket = null;
+            wsRoomCode = null;
+            if (onDisconnectCallback) onDisconnectCallback('relay_closed');
+          };
+          resolve();
+          return;
+        }
+
+        if (packet.type === 'REJOIN_HOST_ERROR') {
+          clearTimeout(timeout);
+          wsSocket?.close();
+          reject(new Error((packet as any).reason || 'Impossible de reprendre la room'));
+        }
+      };
+
+      wsSocket.onerror = () => {
+        clearTimeout(timeout);
+        reject(new Error('Connexion relay échouée'));
+      };
+    });
+  },
+
   approveJoin(socketId: string) {
     if (!wsSocket || wsSocket.readyState !== WebSocket.OPEN || !wsRoomCode) return;
     wsSocket.send(JSON.stringify({ type: 'JOIN_APPROVE', socketId, roomCode: wsRoomCode }));

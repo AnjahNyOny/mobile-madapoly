@@ -118,10 +118,14 @@ export const LobbyScreen = () => {
     setIsConnecting(true);
     setConnectionError('Reconnexion en cours...');
     NetworkManager.setTransport('websocket', RELAY_URL);
+    // Set localPlayerId BEFORE rejoining to avoid race condition:
+    // GAME_START can arrive before rejoinRoom() resolves, causing GameScreen
+    // to mount with localPlayerId=null (no HUD buttons, "thinking" state).
+    useGameStore.getState().setLocalPlayerId(session.localPlayerId);
+    useGameStore.getState().setLocalPlayerInfo(session.playerName, session.playerAvatar);
+    setNetworkRole('client', 'client-' + Date.now());
     try {
       await NetworkManager.rejoinRoom(session.roomCode, session.localPlayerId, session.playerName, session.playerAvatar);
-      useGameStore.getState().setLocalPlayerId(session.localPlayerId);
-      setNetworkRole('client', 'client-' + Date.now());
       setMode('online_client');
       setConnectionError('');
       saveSession(session);
@@ -135,12 +139,18 @@ export const LobbyScreen = () => {
     }
   };
 
-  // ── Auto-rejoin: detect saved session on mount ──
+  // ── Auto-rejoin / auto-reclaim: detect saved session on mount ──
   useEffect(() => {
     const session = loadSession();
     if (!session) return;
     setSavedSession(session);
-    fetchLiveRooms();
+    if (session.localPlayerId === 'host') {
+      // Host refresh: silently try to reclaim the room
+      handleHostRejoin(session);
+    } else {
+      // Client refresh: refresh room list so Reprendre button appears
+      fetchLiveRooms();
+    }
   }, []);
 
   const handleApprove = (socketId: string) => {
@@ -289,6 +299,9 @@ export const LobbyScreen = () => {
         setAppScreen('game');
       } else if (packet.type === 'STATE_UPDATE') {
         syncState(packet.payload);
+      } else if (packet.type === 'HOST_REJOINED') {
+        // Host came back — dismiss disconnect modal if showing
+        useGameStore.getState().setNetworkStatus('connected');
       }
       
       // Handle client requests on the host side
@@ -371,6 +384,33 @@ export const LobbyScreen = () => {
     }
   };
 
+  const handleHostRejoin = async (session: import('../utils/sessionStorage').SavedSession) => {
+    setIsConnecting(true);
+    setConnectionError('Reconnexion hôte en cours...');
+    NetworkManager.setTransport('websocket', RELAY_URL);
+    setNetworkRole('host', 'host');
+    try {
+      await NetworkManager.rejoinHost(session.roomCode);
+      setRoomCode(session.roomCode);
+      NetworkManager._startHostHeartbeat();
+      // Re-sync state to all clients still connected
+      const state = useGameStore.getState();
+      const { players, board, currentPlayerIndex, turnPhase, consecutiveDoubles, lastDiceRoll, actionDeadline, lastEvent, winCondition, chronoEndTime } = state;
+      NetworkManager.broadcast({ type: 'GAME_START', payload: { players, board, currentPlayerIndex, turnPhase, consecutiveDoubles, lastDiceRoll, actionDeadline, lastEvent, winCondition, chronoEndTime } });
+      setConnectionError('');
+      saveSession(session);
+      if (state.appScreen === 'game') setAppScreen('game');
+      else setMode('online_host');
+    } catch (e: any) {
+      clearSession();
+      setSavedSession(null);
+      setConnectionError(e?.message || 'Impossible de reprendre la room.');
+      NetworkManager.setTransport('tcp');
+    } finally {
+      setIsConnecting(false);
+    }
+  };
+
   const handleOnlineHost = async () => {
     setIsConnecting(true);
     setConnectionError('');
@@ -381,6 +421,8 @@ export const LobbyScreen = () => {
       const code = await NetworkManager.createRoom(name);
       setRoomCode(code);
       setMode('online_host');
+      // Persist host session for page-refresh recovery
+      saveSession({ roomCode: code, localPlayerId: 'host', playerName: localPlayerName, playerAvatar: localPlayerAvatar });
     } catch (e) {
       setConnectionError('Impossible de créer la room. Vérifiez votre connexion.');
       NetworkManager.setTransport('tcp');

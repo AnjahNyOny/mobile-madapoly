@@ -467,6 +467,29 @@ wss.on('connection', (ws) => {
       return;
     }
 
+    if (type === 'REJOIN_HOST') {
+      // Host reconnecting after page refresh — reclaim room within 60s grace window
+      const { roomCode: rc } = packet;
+      if (!rc) { send(ws, { type: 'REJOIN_HOST_ERROR', reason: 'Missing roomCode' }); return; }
+      const room = rooms.get(rc);
+      if (!room) { send(ws, { type: 'REJOIN_HOST_ERROR', reason: 'Room expired or not found' }); return; }
+      if (roomHosts.has(rc)) { send(ws, { type: 'REJOIN_HOST_ERROR', reason: 'Room already has a host' }); return; }
+
+      // Cancel host-gone dissolution timer
+      const hgTimer = hostGoneTimers.get(rc);
+      if (hgTimer) { clearTimeout(hgTimer); hostGoneTimers.delete(rc); }
+
+      leaveRoom(ws);
+      room.add(ws);
+      meta.roomCode = rc;
+      roomHosts.set(rc, ws);
+
+      console.log(`[Relay] Host reclaimed room ${rc} (${room.size - 1} clients present)`);
+      send(ws, { type: 'REJOIN_HOST_ACCEPTED', roomCode: rc, socketId: meta.socketId });
+      broadcastToRoom(rc, { type: 'HOST_REJOINED', socketId: meta.socketId }, ws);
+      return;
+    }
+
     if (type === 'GAME_START') {
       // Host signals the game has started — room goes from lobby to playing
       const { roomCode: rc } = meta;

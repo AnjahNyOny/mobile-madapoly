@@ -123,3 +123,18 @@ npx expo export -p web
 ssh liantsoa@babacode.ca "sudo chown -R liantsoa:liantsoa /var/www/mobile-madapoly"
 scp dist/_expo/static/js/web/index-*.js liantsoa@babacode.ca:/var/www/mobile-madapoly/_expo/static/js/web/
 scp dist/index.html liantsoa@babacode.ca:/var/www/mobile-madapoly/ssh liantsoa@babacode.ca "sudo chown -R www-data:www-data /var/www/mobile-madapoly"
+
+# 1. Build
+npx expo export --platform web --output-dir dist
+
+# 2. Permissions temporaires pour scp
+ssh liantsoa@babacode.ca "sudo chown -R liantsoa:liantsoa /var/www/mobile-madapoly"
+
+# 3. Copier le bundle JS
+scp dist/_expo/static/js/web/index-*.js liantsoa@babacode.ca:/var/www/mobile-madapoly/_expo/static/js/web/
+
+# 4. Copier le HTML
+scp dist/index.html liantsoa@babacode.ca:/var/www/mobile-madapoly/
+
+# 5. Permissions finales
+ssh liantsoa@babacode.ca "sudo chown -R www-data:www-data /var/www/mobile-madapoly"

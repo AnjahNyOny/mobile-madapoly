@@ -4,13 +4,15 @@ import { useGameStore } from '../../store/useGameStore';
 import { COLORS, BORDER_RADIUS } from '../../styles/theme';
 
 /**
- * ForfeitButton — Bouton discret "⚙️" qui ouvre un menu
- * avec l'option "Abandonner la partie".
- * Inclut une modale de confirmation pour éviter les clics accidentels.
+ * ForfeitButton — Bouton discret "🏳️" qui ouvre un menu
+ * avec les options "Abandonner" et "Quitter la partie".
  */
 export const ForfeitButton = () => {
-  const [showConfirm, setShowConfirm] = useState(false);
+  const [showMenu, setShowMenu] = useState(false);
+  const [showForfeitConfirm, setShowForfeitConfirm] = useState(false);
+  const [showQuitConfirm, setShowQuitConfirm] = useState(false);
   const forfeit = useGameStore((s) => s.forfeit);
+  const resetToLobby = useGameStore((s) => s.resetToLobby);
   const turnPhase = useGameStore((s) => s.turnPhase);
   const localPlayerId = useGameStore((s) => s.localPlayerId);
   const networkRole = useGameStore((s) => s.networkRole);
@@ -28,26 +30,73 @@ export const ForfeitButton = () => {
   if (localPlayer?.isBankrupt) return null;
 
   const handleForfeit = () => {
-    setShowConfirm(false);
+    setShowForfeitConfirm(false);
+    setShowMenu(false);
     forfeit();
+  };
+
+  const handleQuit = () => {
+    setShowQuitConfirm(false);
+    setShowMenu(false);
+    resetToLobby();
   };
 
   return (
     <>
       <TouchableOpacity
         style={styles.settingsButton}
-        onPress={() => setShowConfirm(true)}
+        onPress={() => setShowMenu(true)}
         activeOpacity={0.7}
       >
         <Text style={styles.settingsIcon}>🏳️</Text>
       </TouchableOpacity>
 
-      {/* Confirmation Modal */}
+      {/* Menu Modal */}
       <Modal
-        visible={showConfirm}
+        visible={showMenu}
         transparent
         animationType="fade"
-        onRequestClose={() => setShowConfirm(false)}
+        onRequestClose={() => setShowMenu(false)}
+      >
+        <TouchableOpacity
+          style={styles.modalOverlay}
+          onPress={() => setShowMenu(false)}
+          activeOpacity={1}
+        >
+          <View style={styles.menuContent}>
+            <TouchableOpacity
+              style={styles.menuItem}
+              onPress={() => {
+                setShowMenu(false);
+                setShowForfeitConfirm(true);
+              }}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.menuIcon}>🏳️</Text>
+              <Text style={styles.menuText}>Abandonner</Text>
+            </TouchableOpacity>
+            <View style={styles.menuDivider} />
+            <TouchableOpacity
+              style={styles.menuItem}
+              onPress={() => {
+                setShowMenu(false);
+                setShowQuitConfirm(true);
+              }}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.menuIcon}>🚪</Text>
+              <Text style={styles.menuText}>Quitter la partie</Text>
+            </TouchableOpacity>
+          </View>
+        </TouchableOpacity>
+      </Modal>
+
+      {/* Forfeit Confirmation Modal */}
+      <Modal
+        visible={showForfeitConfirm}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowForfeitConfirm(false)}
       >
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
@@ -56,22 +105,54 @@ export const ForfeitButton = () => {
             <Text style={styles.modalDescription}>
               Vos propriétés retourneront à la banque et vous serez éliminé. Cette action est irréversible.
             </Text>
-
             <View style={styles.modalActions}>
               <TouchableOpacity
                 style={styles.cancelButton}
-                onPress={() => setShowConfirm(false)}
+                onPress={() => setShowForfeitConfirm(false)}
                 activeOpacity={0.8}
               >
                 <Text style={styles.cancelText}>Annuler</Text>
               </TouchableOpacity>
-
               <TouchableOpacity
                 style={styles.confirmButton}
                 onPress={handleForfeit}
                 activeOpacity={0.8}
               >
                 <Text style={styles.confirmText}>Abandonner</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Quit Confirmation Modal */}
+      <Modal
+        visible={showQuitConfirm}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowQuitConfirm(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalIcon}>🚪</Text>
+            <Text style={styles.modalTitle}>Quitter la partie ?</Text>
+            <Text style={styles.modalDescription}>
+              Vous allez retourner à l'écran d'accueil. La partie continuera sans vous.
+            </Text>
+            <View style={styles.modalActions}>
+              <TouchableOpacity
+                style={styles.cancelButton}
+                onPress={() => setShowQuitConfirm(false)}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.cancelText}>Annuler</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.confirmButton, { backgroundColor: '#6B7280' }]}
+                onPress={handleQuit}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.confirmText}>Quitter</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -94,6 +175,41 @@ const styles = StyleSheet.create({
   },
   settingsIcon: {
     fontSize: 17,
+  },
+
+  // ── Menu ──
+  menuContent: {
+    backgroundColor: '#1A1A1A',
+    borderRadius: 16,
+    paddingVertical: 8,
+    width: 220,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.4,
+    shadowRadius: 20,
+    elevation: 15,
+  },
+  menuItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 14,
+    paddingHorizontal: 20,
+    gap: 12,
+  },
+  menuIcon: {
+    fontSize: 18,
+  },
+  menuText: {
+    color: '#FFF',
+    fontSize: 15,
+    fontFamily: 'Inter_600SemiBold',
+  },
+  menuDivider: {
+    height: 1,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    marginHorizontal: 12,
   },
 
   // ── Modal ──

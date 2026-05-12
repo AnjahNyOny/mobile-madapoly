@@ -49,7 +49,7 @@ export const STATIC_BOARD: BoardSpace[] = [
   { id: '7', name: 'Ankamantatra', type: 'chance' },
   { id: '8', name: 'Ranomafana', type: 'property', price: 100, color: '#38A1DB',
     rent: [6, 30, 90, 270, 400, 550] },
-  { id: '9', name: 'Masoala', type: 'property', price: 120, color: '#38A1DB',
+  { id: '9', name: 'Ambalavao', type: 'property', price: 120, color: '#38A1DB',
     rent: [8, 40, 100, 300, 450, 600] },
 
   // ── CÔTÉ GAUCHE (indices 10-19) ──

@@ -17,6 +17,7 @@ import { BoardLayer } from '../components/board/BoardLayer';
 import { TokenLayer } from '../components/board/TokenLayer';
 import { HUDLayer } from '../components/ui/HUDLayer';
 import { useBotLogic } from '../hooks/useBotLogic';
+import { useGameSounds } from '../hooks/useGameSounds';
 import { CameraController } from '../utils/CameraController';
 
 const { width: _width, height: SCREEN_HEIGHT } = Dimensions.get('window');
@@ -35,6 +36,9 @@ export const GameScreen = () => {
 
   // ── Bot AI: all auto-play logic is handled by this hook ──
   useBotLogic();
+
+  // ── Sound effects: reacts to game state changes (dice, rent, jail, depart) ──
+  useGameSounds();
 
   // ── Network message handler for all game messages ──
   useEffect(() => {

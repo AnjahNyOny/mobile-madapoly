@@ -9,6 +9,7 @@ import { GameScreen } from './src/screens/GameScreen';
 import { LobbyScreen } from './src/screens/LobbyScreen';
 import { COLORS } from './src/styles/theme';
 import { useGameStore } from './src/store/useGameStore';
+import { preloadSounds } from './src/utils/soundEffects';
 
 // Keep the splash screen visible while we fetch resources
 SplashScreen.preventAutoHideAsync();
@@ -24,6 +25,7 @@ export default function App() {
 
   const onLayoutRootView = useCallback(async () => {
     if (fontsLoaded) {
+      await preloadSounds();
       await SplashScreen.hideAsync();
     }
   }, [fontsLoaded]);

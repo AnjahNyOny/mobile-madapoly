@@ -13,6 +13,11 @@ import { useGameStore } from '../../store/useGameStore';
 import { getTileCenter } from '../../utils/mathHelpers';
 import { COLORS } from '../../styles/theme';
 import { CameraController } from '../../utils/CameraController';
+import { playSound } from '../../utils/soundEffects';
+
+// Helpers appelés depuis les callbacks Reanimated (doivent être stables)
+const playReboundSound = () => playSound('rebound2');
+const playLastReboundSound = () => playSound('last-rebound');
 
 // ─── CONFIGURATION ───
 const TOKEN_SIZE = 28;
@@ -212,11 +217,13 @@ const PlayerToken = React.memo(({
     // X: pause then step-by-step, pan camera on each step via callback
     const xSeq = [
       withTiming(animX.value, { duration: PRE_MOVE_DELAY }),
-      ...stepTargets.map((t, i) =>
-        withTiming(t.x, { duration: STEP_DURATION, easing: STEP_EASING }, () => {
+      ...stepTargets.map((t, i) => {
+        const isLast = i === stepTargets.length - 1;
+        return withTiming(t.x, { duration: STEP_DURATION, easing: STEP_EASING }, () => {
           runOnJS(panFns[i])();
-        })
-      ),
+          runOnJS(isLast ? playLastReboundSound : playReboundSound)();
+        });
+      }),
     ];
     animX.value = withSequence(...xSeq);
 

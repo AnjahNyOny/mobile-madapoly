@@ -1,9 +1,10 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { StyleSheet, View, Text } from 'react-native';
 import { COLORS } from '../../styles/theme';
 
 interface DiceDisplayProps {
   diceRoll: [number, number] | null;
+  isRolling?: boolean;
 }
 
 // Unicode dice faces for visual representation
@@ -16,12 +17,44 @@ const DICE_FACES: Record<number, string> = {
   6: '⚅',
 };
 
+function randomDie() {
+  return Math.floor(Math.random() * 6) + 1;
+}
+
 /**
  * DiceDisplay renders two dice with their values.
  * Shows the unicode dice faces for a premium feel.
  * When no roll has been made, shows placeholder dashes.
+ * When isRolling is true, shows rapidly changing dice for animation.
  */
-export const DiceDisplay = React.memo(({ diceRoll }: DiceDisplayProps) => {
+export const DiceDisplay = React.memo(({ diceRoll, isRolling = false }: DiceDisplayProps) => {
+  const [animValues, setAnimValues] = useState<[number, number]>([randomDie(), randomDie()]);
+
+  useEffect(() => {
+    if (!isRolling) return;
+    const interval = setInterval(() => {
+      setAnimValues([randomDie(), randomDie()]);
+    }, 80);
+    return () => clearInterval(interval);
+  }, [isRolling]);
+
+  if (isRolling) {
+    const [die1, die2] = animValues;
+    return (
+      <View style={styles.container}>
+        <View style={[styles.die, styles.dieRolling]}>
+          <Text style={[styles.dieFace, styles.dieFaceRolling]}>{DICE_FACES[die1]}</Text>
+        </View>
+        <View style={styles.totalContainer}>
+          <Text style={[styles.totalValue, styles.totalRolling]}>?</Text>
+        </View>
+        <View style={[styles.die, styles.dieRolling]}>
+          <Text style={[styles.dieFace, styles.dieFaceRolling]}>{DICE_FACES[die2]}</Text>
+        </View>
+      </View>
+    );
+  }
+
   if (!diceRoll) {
     return (
       <View style={styles.container}>
@@ -122,5 +155,17 @@ const styles = StyleSheet.create({
     fontFamily: 'Inter_700Bold',
     letterSpacing: 1,
     marginTop: 2,
+  },
+  dieRolling: {
+    backgroundColor: '#E8E8E8',
+    borderColor: 'rgba(0,0,0,0.15)',
+    opacity: 0.85,
+  },
+  dieFaceRolling: {
+    opacity: 0.7,
+    transform: [{ rotate: '8deg' }],
+  },
+  totalRolling: {
+    opacity: 0.4,
   },
 });

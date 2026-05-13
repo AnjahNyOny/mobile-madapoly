@@ -5,6 +5,7 @@ import { NetworkManager } from '../network/NetworkManager';
 import { useGameStore, ConnectedClient } from '../store/useGameStore';
 import { RELAY_URL, RELAY_HTTP_URL } from '../constants/config';
 import { saveSession, loadSession, clearSession, loadGameState, clearGameState } from '../utils/sessionStorage';
+import { getRandomBotNames } from '../utils/botNames';
 
 type LobbyMode = 'select' | 'host' | 'client' | 'online_host' | 'online_client';
 
@@ -582,10 +583,11 @@ export const LobbyScreen = () => {
     
     // Add bots up to botCount (but cap at 4 total)
     const maxBots = Math.min(botCount, 4 - playersSetup.length);
+    const botNames = getRandomBotNames(maxBots);
     for (let i = 0; i < maxBots; i++) {
       playersSetup.push({ 
         id: `bot-${playersSetup.length}`, 
-        name: `Bot ${i + 1}`, 
+        name: botNames[i], 
         avatar: AVATARS[(playersSetup.length) % AVATARS.length], 
         isBot: true 
       });
@@ -593,7 +595,8 @@ export const LobbyScreen = () => {
 
     // Ensure minimum 2 players
     if (playersSetup.length < 2) {
-      playersSetup.push({ id: 'bot-fill', name: 'Bot 1', avatar: '🤖', isBot: true });
+      const fillName = getRandomBotNames(1)[0];
+      playersSetup.push({ id: 'bot-fill', name: fillName, avatar: '🤖', isBot: true });
     }
 
     initGame(playersSetup);
@@ -632,10 +635,11 @@ export const LobbyScreen = () => {
     const playersSetup: {id: string, name: string, avatar: string, isBot: boolean}[] = [
       { id: 'player1', name: localPlayerName, avatar: localPlayerAvatar, isBot: false },
     ];
+    const botNames = getRandomBotNames(botCount);
     for (let i = 0; i < botCount; i++) {
       playersSetup.push({ 
         id: `b${i + 1}`, 
-        name: `Bot ${i + 1}`, 
+        name: botNames[i], 
         avatar: AVATARS[(i + 1) % AVATARS.length], 
         isBot: true 
       });
@@ -781,26 +785,31 @@ export const LobbyScreen = () => {
                 placeholderTextColor={COLORS.textMuted}
                 maxLength={12}
               />
-              <View style={styles.tokenHeaderRow}>
-                <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                  <Text style={styles.sectionLabel}>PION</Text>
-                  {localPlayerAvatar && (() => {
-                    const sel = TOKENS.find(t => t.id === localPlayerAvatar);
-                    return sel ? (
-                      <View style={styles.selectedTokenBadge}>
-                        <Image source={sel.image} style={{ width: 20, height: 20, resizeMode: 'contain' }} />
-                        <Text style={styles.selectedTokenName}>{sel.label}</Text>
-                      </View>
-                    ) : null;
-                  })()}
-                </View>
-                <TouchableOpacity style={styles.tokenExpandBtn} onPress={() => setTokenExpanded(v => !v)}>
-                  <Text style={styles.tokenExpandBtnText}>{tokenExpanded ? '▲ Réduire' : '▼ Choisir'}</Text>
+              <Text style={styles.sectionLabel}>PION</Text>
+
+              {/* 5 pions visibles + bouton +/- */}
+              <View style={styles.tokenQuickRow}>
+                {TOKENS.slice(0, 5).map(tok => (
+                  <TouchableOpacity
+                    key={tok.id}
+                    style={[styles.tokenQuickBtn, localPlayerAvatar === tok.id && styles.tokenQuickBtnActive]}
+                    onPress={() => setLocalPlayerInfo(localPlayerName, tok.id)}
+                  >
+                    <Image source={tok.image} style={styles.tokenQuickImage} />
+                  </TouchableOpacity>
+                ))}
+                <TouchableOpacity
+                  style={styles.tokenMoreBtn}
+                  onPress={() => setTokenExpanded(v => !v)}
+                >
+                  <Text style={styles.tokenMoreText}>{tokenExpanded ? '✕' : '+'}</Text>
                 </TouchableOpacity>
               </View>
+
+              {/* Grille complète (sans les 5 premiers) */}
               {tokenExpanded && (
                 <View style={styles.tokenGrid}>
-                  {TOKENS.map(tok => (
+                  {TOKENS.slice(5).map(tok => (
                     <TouchableOpacity
                       key={tok.id}
                       style={[styles.tokenBtn, localPlayerAvatar === tok.id && styles.tokenBtnActive]}
@@ -1162,6 +1171,27 @@ const styles = StyleSheet.create({
   tokenEmoji: { fontSize: 26 },
   tokenImage: { width: 34, height: 34, resizeMode: 'contain' },
   tokenLabel: { fontSize: 8, fontFamily: 'Inter_700Bold', color: COLORS.textSecondary, marginTop: 3, textAlign: 'center' },
+
+  // ── Token Quick Row (5 visible + more button) ──
+  tokenQuickRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 12 },
+  tokenQuickBtn: {
+    width: 44, height: 44, borderRadius: 12,
+    backgroundColor: COLORS.surface, borderWidth: 1.5, borderColor: COLORS.surfaceBorder,
+    justifyContent: 'center', alignItems: 'center',
+  },
+  tokenQuickBtnActive: { borderColor: COLORS.madaGreen, backgroundColor: 'rgba(0,122,61,0.15)' },
+  tokenQuickImage: { width: 30, height: 30, resizeMode: 'contain' },
+  tokenMoreBtn: {
+    width: 44, height: 44, borderRadius: 12,
+    backgroundColor: 'rgba(255,255,255,0.08)', borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.15)',
+    justifyContent: 'center', alignItems: 'center',
+  },
+  tokenMoreText: { fontSize: 22, fontFamily: 'Inter_700Bold', color: '#FFF' },
+  tokenCloseBtn: {
+    width: '100%', alignItems: 'center', paddingVertical: 10,
+    borderRadius: 10, backgroundColor: 'rgba(255,255,255,0.06)', marginTop: 4,
+  },
+  tokenCloseText: { fontSize: 12, fontFamily: 'Inter_600SemiBold', color: COLORS.textMuted },
 
   // ── Mode Cards ──
   modeCards: { gap: 10 },

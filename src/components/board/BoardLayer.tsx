@@ -3,6 +3,7 @@ import { StyleSheet, View, Text, Image } from 'react-native';
 import { STATIC_BOARD } from '../../constants';
 import { BOARD_SIZE, CORNER_TILE_SIZE, getTileLayout } from '../../utils/mathHelpers';
 import { SpaceTile } from './SpaceTile';
+import { OwnershipPlaques } from './OwnershipPlaques';
 
 /**
  * BoardLayer renders the complete 40-tile Monopoly board as a large square.
@@ -40,6 +41,9 @@ export const BoardLayer = () => {
         const layout = getTileLayout(index);
         return <SpaceTile key={space.id} space={space} layout={layout} />;
       })}
+
+      {/* Ownership plaques in the center area */}
+      <OwnershipPlaques />
     </View>
   );
 };

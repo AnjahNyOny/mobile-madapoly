@@ -41,6 +41,7 @@ export const HUDLayer = () => {
   const turnTimeRemaining = useGameStore(s => s.turnTimeRemaining);
   const [isTradeModalOpen, setIsTradeModalOpen] = React.useState(false);
   const [chronoDisplay, setChronoDisplay] = useState<string | null>(null);
+  const [isRolling, setIsRolling] = useState(false);
 
   useEffect(() => {
     if (!chronoEndTime) { setChronoDisplay(null); return; }
@@ -69,7 +70,7 @@ export const HUDLayer = () => {
   const isLocalPlayerTurn = isHostOrLocal
     ? !currentPlayer?.isBot && !isRemoteClientPlayer
     : currentPlayer?.id === localPlayerId;
-  const canRoll = turnPhase === 'WAITING_FOR_DICE' && isLocalPlayerTurn;
+  const canRoll = turnPhase === 'WAITING_FOR_DICE' && isLocalPlayerTurn && !isRolling;
   const isGameOver = turnPhase === 'GAME_OVER';
   const isBotDecision = turnPhase === 'WAITING_FOR_DECISION' && currentPlayer?.isBot;
   const isJailDecision = turnPhase === 'IN_JAIL_DECISION';
@@ -143,7 +144,7 @@ export const HUDLayer = () => {
           {/* Dice result display */}
           {!isGameOver && (
             <View style={styles.diceContainer}>
-              <DiceDisplay diceRoll={lastDiceRoll} />
+              <DiceDisplay diceRoll={lastDiceRoll} isRolling={isRolling} />
             </View>
           )}
 
@@ -152,7 +153,14 @@ export const HUDLayer = () => {
             <View style={styles.actionRow} pointerEvents="auto">
               <TouchableOpacity
                 style={styles.rollButton}
-                onPress={() => rollDice(true)}
+                onPress={() => {
+                  if (isRolling) return;
+                  setIsRolling(true);
+                  setTimeout(() => {
+                    rollDice(true);
+                    setIsRolling(false);
+                  }, 800);
+                }}
                 activeOpacity={0.8}
               >
                 <Text style={styles.rollButtonIcon}>🎲</Text>

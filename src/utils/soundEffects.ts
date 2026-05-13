@@ -1,4 +1,5 @@
 import { Audio } from 'expo-av';
+import { isMusicEnabled, isSfxEnabled } from './soundPrefs';
 
 // Map des sons disponibles
 const SOUND_MAP: Record<string, any> = {
@@ -10,6 +11,7 @@ const SOUND_MAP: Record<string, any> = {
   depart: require('../../assets/sounds/depart.wav'),
   'buy-property': require('../../assets/sounds/buy-property.wav'),
   win: require('../../assets/sounds/win.wav'),
+  'bg-music': require('../../assets/sounds/bg_music.wav'),
 };
 
 let preloadedSounds: Map<string, Audio.Sound> = new Map();
@@ -33,6 +35,7 @@ export const preloadSounds = async () => {
  */
 export const playSound = async (key: string) => {
   try {
+    if (!isSfxEnabled()) return;
     // Si préchargé, rejoue depuis le début
     const preloaded = preloadedSounds.get(key);
     if (preloaded) {
@@ -64,4 +67,36 @@ export const unloadSounds = async () => {
     try { await sound.unloadAsync(); } catch {}
   }
   preloadedSounds.clear();
+  await stopBgMusic();
+};
+
+// ─── MUSIQUE DE FOND (loop 30s) ───
+let bgMusicRef: Audio.Sound | null = null;
+
+export const playBgMusic = async () => {
+  try {
+    if (!isMusicEnabled()) return;
+    if (bgMusicRef) return; // déjà en cours
+    const file = SOUND_MAP['bg-music'];
+    if (!file) return;
+    const { sound } = await Audio.Sound.createAsync(
+      file,
+      { shouldPlay: true, isLooping: true, volume: 0.35 }
+    );
+    bgMusicRef = sound;
+  } catch {
+    // Silencieux
+  }
+};
+
+export const stopBgMusic = async () => {
+  try {
+    if (bgMusicRef) {
+      await bgMusicRef.stopAsync();
+      await bgMusicRef.unloadAsync();
+      bgMusicRef = null;
+    }
+  } catch {
+    // Silencieux
+  }
 };

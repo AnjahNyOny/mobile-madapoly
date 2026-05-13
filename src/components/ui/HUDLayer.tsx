@@ -8,7 +8,7 @@ import { PropertyModal } from './PropertyModal';
 import { EventToast } from './EventToast';
 import { DisconnectModal } from './DisconnectModal';
 import { JailPanel } from './JailPanel';
-import { ForfeitButton } from './ForfeitButton';
+import { SettingsButton } from './ForfeitButton';
 import { GameLogPanel } from './GameLogPanel';
 import { PlayerPropertiesModal } from './PlayerPropertiesModal';
 import { PropertyDetailModal } from './PropertyDetailModal';
@@ -206,9 +206,9 @@ export const HUDLayer = () => {
               <Text style={styles.iconBtnText}>📜</Text>
             </TouchableOpacity>
           </View>
-          {/* ─── Bottom-right: Forfeit ─── */}
+          {/* ─── Bottom-right: Settings ─── */}
           <View style={styles.bottomRightBar}>
-            <ForfeitButton />
+            <SettingsButton />
           </View>
         </View>
       </SafeAreaView>

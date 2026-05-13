@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { useGameStore } from '../store/useGameStore';
-import { playSound } from '../utils/soundEffects';
+import { playSound, playBgMusic, stopBgMusic } from '../utils/soundEffects';
 
 /**
  * Hook qui joue les effets sonores en fonction des événements de jeu.
@@ -15,13 +15,24 @@ export function useGameSounds() {
   const lastEvent = useGameStore((s) => s.lastEvent);
   const lastDiceRoll = useGameStore((s) => s.lastDiceRoll);
 
+  const appScreen = useGameStore((s) => s.appScreen);
+
   const prevTurnPhaseRef = useRef(turnPhase);
   const prevEventRef = useRef(lastEvent);
   const prevDiceRef = useRef(lastDiceRoll);
+  const prevScreenRef = useRef<'lobby' | 'game' | null>(null);
 
   useEffect(() => {
+    const prevScreen = prevScreenRef.current;
     const prevPhase = prevTurnPhaseRef.current;
     const prevEvent = prevEventRef.current;
+
+    // Musique de fond : démarre quand on entre en jeu, s'arrête au lobby
+    if (prevScreen !== 'game' && appScreen === 'game') {
+      playBgMusic();
+    } else if (prevScreen === 'game' && appScreen !== 'game') {
+      stopBgMusic();
+    }
 
     // Lancer de dés (une seule fois au début du mouvement)
     if (prevPhase !== 'ANIMATING_MOVEMENT' && turnPhase === 'ANIMATING_MOVEMENT') {
@@ -52,8 +63,9 @@ export function useGameSounds() {
     }
 
     // Mettre à jour les refs
+    prevScreenRef.current = appScreen;
     prevTurnPhaseRef.current = turnPhase;
     prevEventRef.current = lastEvent;
     prevDiceRef.current = lastDiceRoll;
-  }, [turnPhase, lastEvent, lastDiceRoll]);
+  }, [appScreen, turnPhase, lastEvent, lastDiceRoll]);
 }

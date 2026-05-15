@@ -1,5 +1,16 @@
-import { Audio } from 'expo-av';
 import { isMusicEnabled, isSfxEnabled } from './soundPrefs';
+
+// Lazy-load expo-av. If the native module is compiled into the build,
+// require succeeds. If not (e.g. Expo Go, missing rebuild), it throws
+// and all audio functions become no-ops so the app never crashes.
+let Audio: any = null;
+try {
+  Audio = require('expo-av').Audio;
+} catch {
+  // expo-av native module not available
+}
+
+const audioAvailable = Audio !== null;
 
 // Map des sons disponibles
 const SOUND_MAP: Record<string, any> = {
@@ -14,12 +25,13 @@ const SOUND_MAP: Record<string, any> = {
   'bg-music': require('../../assets/sounds/bg_music.wav'),
 };
 
-let preloadedSounds: Map<string, Audio.Sound> = new Map();
+let preloadedSounds: Map<string, any> = new Map();
 
 /**
  * Précharge tous les sons au démarrage de l'app (optionnel mais recommandé)
  */
 export const preloadSounds = async () => {
+  if (!audioAvailable) return;
   for (const [key, file] of Object.entries(SOUND_MAP)) {
     try {
       const { sound } = await Audio.Sound.createAsync(file, { shouldPlay: false });
@@ -34,17 +46,15 @@ export const preloadSounds = async () => {
  * Joue un son par son identifiant
  */
 export const playSound = async (key: string) => {
+  if (!audioAvailable) return;
   try {
     if (!isSfxEnabled()) return;
-    // Si préchargé, rejoue depuis le début
     const preloaded = preloadedSounds.get(key);
     if (preloaded) {
       await preloaded.setPositionAsync(0);
       await preloaded.playAsync();
       return;
     }
-
-    // Sinon charge à la volée
     const file = SOUND_MAP[key];
     if (!file) return;
     const { sound } = await Audio.Sound.createAsync(file);
@@ -63,6 +73,7 @@ export const playSound = async (key: string) => {
  * Libère les sons préchargés (appeler au cleanup)
  */
 export const unloadSounds = async () => {
+  if (!audioAvailable) return;
   for (const sound of preloadedSounds.values()) {
     try { await sound.unloadAsync(); } catch {}
   }
@@ -71,9 +82,10 @@ export const unloadSounds = async () => {
 };
 
 // ─── MUSIQUE DE FOND (loop 30s) ───
-let bgMusicRef: Audio.Sound | null = null;
+let bgMusicRef: any = null;
 
 export const playBgMusic = async () => {
+  if (!audioAvailable) return;
   try {
     if (!isMusicEnabled()) return;
     if (bgMusicRef) return; // déjà en cours
@@ -90,6 +102,7 @@ export const playBgMusic = async () => {
 };
 
 export const stopBgMusic = async () => {
+  if (!audioAvailable) return;
   try {
     if (bgMusicRef) {
       await bgMusicRef.stopAsync();

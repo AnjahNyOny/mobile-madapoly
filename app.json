@@ -14,7 +14,10 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.littlefooldev.monopolymada"
+      "bundleIdentifier": "com.littlefooldev.monopolymada",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -29,7 +32,7 @@
       "favicon": "./assets/favicon.png",
       "bundler": "metro"
     },
-    "plugins": [],
+    "plugins": ["expo-av"],
     "extra": {
       "eas": {
         "projectId": "365e58f0-56ec-483c-893d-4e3b89604fe6"

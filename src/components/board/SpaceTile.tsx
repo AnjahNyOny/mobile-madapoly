@@ -100,9 +100,12 @@ export const SpaceTile = React.memo(({ space, layout }: SpaceTileProps) => {
   // Font sizes & icon size (proportional to tile dimensions)
   const nameFontSize = isCorner ? 11 : 7;
   const priceFontSize = isCorner ? 9 : 6;
-  const iconSize = isCorner
-    ? Math.min(width, height) * 0.48
-    : Math.min(width, height) * 0.60;
+  const iconRatio =
+    space.id === '10' ? 0.95   // Prison (fills tile, no text)
+    : ['20', '30'].includes(space.id) ? 0.80   // Top corners
+    : space.id === '25' ? 0.85   // Posy-posy
+    : 0.60;
+  const iconSize = Math.min(width, height) * iconRatio;
 
   return (
     <TouchableOpacity
@@ -128,18 +131,20 @@ export const SpaceTile = React.memo(({ space, layout }: SpaceTileProps) => {
             <TileIconRenderer spaceId={space.id} type={space.type} size={iconSize} color="#333333" />
           </View>
         )}
-        <Text
-          style={[
-            styles.tileName, 
-            { fontSize: nameFontSize },
-            isMortgaged && { textDecorationLine: 'line-through' }
-          ]}
-          numberOfLines={2}
-          adjustsFontSizeToFit
-          minimumFontScale={0.5}
-        >
-          {space.name}
-        </Text>
+        {space.id !== '10' && (
+          <Text
+            style={[
+              styles.tileName, 
+              { fontSize: nameFontSize },
+              isMortgaged && { textDecorationLine: 'line-through' }
+            ]}
+            numberOfLines={2}
+            adjustsFontSizeToFit
+            minimumFontScale={0.5}
+          >
+            {space.name}
+          </Text>
+        )}
         {space.price !== undefined && (
           <Text style={[styles.tilePrice, { fontSize: priceFontSize }]}>
             {space.price} AR

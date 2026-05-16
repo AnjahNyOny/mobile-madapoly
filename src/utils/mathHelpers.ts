@@ -4,7 +4,7 @@ const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 // The board is a square. We use the screen width as the reference.
 // The board will be slightly larger than the screen to allow camera panning.
-export const BOARD_SIZE = SCREEN_WIDTH * 1.8;
+export const BOARD_SIZE = SCREEN_WIDTH * 2.2;
 
 // Corner tiles are square, side tiles are narrower rectangles.
 // The board has 11 positions per side (including 2 corners).

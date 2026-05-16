@@ -26,6 +26,16 @@ const SCREEN_WIDTH = Platform.OS === 'web' ? Math.min(_width, 480) : _width;
 // Camera animation configuration
 const SPRING_CONFIG = { damping: 15, stiffness: 90, mass: 1 };
 
+// HUD bar heights (approximate) — used to offset camera center
+const TOP_BAR_HEIGHT = Platform.OS === 'ios' ? 100 : 80;
+const BOTTOM_BAR_HEIGHT = Platform.OS === 'ios' ? 90 : 75;
+
+// The "visible" center of the play area (between the two bars)
+const VISIBLE_CENTER_Y = TOP_BAR_HEIGHT + (SCREEN_HEIGHT - TOP_BAR_HEIGHT - BOTTOM_BAR_HEIGHT) / 2;
+
+// Extra decorative padding around the board (table surface)
+const TABLE_PADDING = SCREEN_WIDTH;
+
 export const GameScreen = () => {
   // ── Zustand selectors (only what GameScreen needs) ──
   const turnPhase = useGameStore((s) => s.turnPhase);
@@ -100,24 +110,20 @@ export const GameScreen = () => {
 
   /**
    * Smoothly center the camera on a given board position index.
-   * Translates the board container so the tile's center aligns with
-   * the center of the screen.
+   * Centers on VISIBLE_CENTER_Y to account for top/bottom HUD bars.
+   * No hard clamp — the decorative table surface fills all visible space.
    */
   const centerOnPosition = useCallback((position: number) => {
     const center = getTileCenter(position);
-    translateX.value = withSpring(
-      SCREEN_WIDTH / 2 - center.x,
-      SPRING_CONFIG
-    );
-    translateY.value = withSpring(
-      SCREEN_HEIGHT / 2 - center.y,
-      SPRING_CONFIG
-    );
+    // Offset by TABLE_PADDING because the board is shifted inside the wrapper
+    const targetX = SCREEN_WIDTH / 2 - (center.x + TABLE_PADDING);
+    const targetY = VISIBLE_CENTER_Y - (center.y + TABLE_PADDING);
+    translateX.value = withSpring(targetX, SPRING_CONFIG);
+    translateY.value = withSpring(targetY, SPRING_CONFIG);
   }, []);
 
   /**
    * Pan gesture for manual board exploration.
-   * The player can drag the board freely to look around.
    * Camera auto-recenters on the next turn or animation.
    */
   const panGesture = Gesture.Pan()
@@ -154,23 +160,73 @@ export const GameScreen = () => {
     centerOnPosition(0);
   }, []);
 
-  // ── Camera follow: center on active player (non-animation phases only) ──
+  // ── Camera follow: center on active player during ALL active phases ──
   useEffect(() => {
     if (players.length === 0) return;
     const currentPlayer = players[currentPlayerIndex];
-    // Pan to player at turn start — TokenLayer handles ANIMATING_MOVEMENT
-    if (turnPhase === 'WAITING_FOR_DICE') {
+    // Follow the player on every phase change except during movement animation
+    // (TokenLayer handles camera during ANIMATING_MOVEMENT via CameraController)
+    if (turnPhase !== 'ANIMATING_MOVEMENT') {
       centerOnPosition(currentPlayer.position);
     }
   }, [turnPhase, currentPlayerIndex, players.length]);
 
+  // Generate diamond pattern positions for the table surface
+  const diamonds = React.useMemo(() => {
+    const result = [];
+    const rows = 14;
+    const cols = 14;
+    const totalW = BOARD_SIZE + TABLE_PADDING * 2;
+    const sX = totalW / cols;
+    const sY = totalW / rows;
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        result.push({
+          key: `${r}-${c}`,
+          left: c * sX + (r % 2 === 0 ? sX / 2 : 0),
+          top: r * sY,
+        });
+      }
+    }
+    return result;
+  }, []);
+
   return (
     <View style={styles.container}>
-      {/* Layer 1: Pannable & animated board container */}
+      {/* Layer 1: Pannable & animated board container (includes table surface) */}
       <GestureDetector gesture={panGesture}>
-        <Animated.View style={[styles.boardContainer, boardAnimatedStyle]}>
-          <BoardLayer />
-          <TokenLayer />
+        <Animated.View style={[styles.boardWrapper, boardAnimatedStyle]}>
+          {/* Decorative table surface — Sandy terrain */}
+          <View style={styles.tableSurface}>
+            {/* Diamond motifs */}
+            {diamonds.map(d => (
+              <View
+                key={d.key}
+                style={[styles.diamond, { left: d.left, top: d.top }]}
+              />
+            ))}
+
+            {/* Ocean strips — edges */}
+            <View style={[styles.oceanStrip, styles.oceanTop]} />
+            <View style={[styles.oceanStrip, styles.oceanLeft]} />
+
+            {/* River curves flowing across the sand */}
+            <View style={[styles.river, { top: '30%', left: '10%', width: '35%', transform: [{ rotate: '15deg' }] }]} />
+            <View style={[styles.river, { top: '32%', left: '25%', width: '25%', transform: [{ rotate: '-10deg' }] }]} />
+            <View style={[styles.river, { top: '60%', right: '5%', width: '40%', transform: [{ rotate: '-20deg' }] }]} />
+            <View style={[styles.river, { top: '62%', right: '15%', width: '30%', transform: [{ rotate: '5deg' }] }]} />
+            <View style={[styles.riverWide, { bottom: '20%', left: '20%', width: '50%', transform: [{ rotate: '12deg' }] }]} />
+
+            {/* Subtle watermarks */}
+            <Text style={[styles.tableWatermark, { top: TABLE_PADDING / 3, left: TABLE_PADDING / 4 }]}>MADAPOLY</Text>
+            <Text style={[styles.tableWatermark, { bottom: TABLE_PADDING / 3, right: TABLE_PADDING / 4 }]}>MADAPOLY</Text>
+          </View>
+
+          {/* The actual board, offset by TABLE_PADDING */}
+          <View style={styles.boardInner}>
+            <BoardLayer />
+            <TokenLayer />
+          </View>
         </Animated.View>
       </GestureDetector>
 
@@ -187,16 +243,77 @@ export const GameScreen = () => {
   );
 };
 
+const TOTAL_SIZE = BOARD_SIZE + TABLE_PADDING * 2;
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: COLORS.background,
-    overflow: 'hidden', // Clip the board when it extends beyond screen
+    backgroundColor: '#C2A97A',
+    overflow: 'hidden',
   },
-  boardContainer: {
+  boardWrapper: {
+    width: TOTAL_SIZE,
+    height: TOTAL_SIZE,
+    position: 'absolute',
+  },
+  tableSurface: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: '#D4C4A0', // Sandy beige
+  },
+  diamond: {
+    position: 'absolute',
+    width: 16,
+    height: 16,
+    backgroundColor: 'rgba(160, 130, 80, 0.08)',
+    transform: [{ rotate: '45deg' }],
+    borderRadius: 2,
+  },
+  oceanStrip: {
+    position: 'absolute',
+    backgroundColor: 'rgba(40, 120, 180, 0.12)',
+  },
+  oceanTop: {
+    top: 0,
+    left: 0,
+    right: 0,
+    height: TABLE_PADDING * 0.6,
+    borderBottomLeftRadius: 200,
+    borderBottomRightRadius: 80,
+  },
+  oceanLeft: {
+    top: 0,
+    left: 0,
+    bottom: 0,
+    width: TABLE_PADDING * 0.5,
+    borderTopRightRadius: 100,
+    borderBottomRightRadius: 200,
+  },
+  river: {
+    position: 'absolute',
+    height: 3,
+    backgroundColor: 'rgba(60, 140, 200, 0.15)',
+    borderRadius: 4,
+  },
+  riverWide: {
+    position: 'absolute',
+    height: 6,
+    backgroundColor: 'rgba(50, 130, 190, 0.12)',
+    borderRadius: 6,
+  },
+  tableWatermark: {
+    position: 'absolute',
+    fontSize: 48,
+    fontFamily: 'Inter_900Black',
+    color: 'rgba(160, 130, 80, 0.06)',
+    letterSpacing: 10,
+    transform: [{ rotate: '-30deg' }],
+  },
+  boardInner: {
+    position: 'absolute',
+    top: TABLE_PADDING,
+    left: TABLE_PADDING,
     width: BOARD_SIZE,
     height: BOARD_SIZE,
-    position: 'absolute',
   },
   spectatorBanner: {
     position: 'absolute',

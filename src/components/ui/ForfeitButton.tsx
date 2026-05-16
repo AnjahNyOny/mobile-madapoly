@@ -65,7 +65,7 @@ export const SettingsButton = () => {
         onPress={() => setShowMenu(true)}
         activeOpacity={0.7}
       >
-        <Text style={styles.settingsIcon}>⚙️</Text>
+        <Text style={styles.settingsIcon}>☰</Text>
       </TouchableOpacity>
 
       {/* Menu Modal */}
@@ -209,7 +209,7 @@ const styles = StyleSheet.create({
   settingsButton: {
     width: 38,
     height: 38,
-    borderRadius: 19,
+    borderRadius: 8,
     backgroundColor: 'rgba(255,255,255,0.07)',
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.1)',
@@ -217,7 +217,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   settingsIcon: {
-    fontSize: 17,
+    fontSize: 20,
+    color: '#FFF',
   },
 
   // ── Menu ──

@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { StyleSheet, View, Text, TouchableOpacity, SafeAreaView, Platform, StatusBar } from 'react-native';
+import { StyleSheet, View, Text, TouchableOpacity, SafeAreaView, Platform, StatusBar, ScrollView, Image } from 'react-native';
 import { useGameStore } from '../../store/useGameStore';
 import { COLORS, SPACING, BORDER_RADIUS } from '../../styles/theme';
 import { PlayerCard } from './PlayerCard';
@@ -14,6 +14,37 @@ import { PlayerPropertiesModal } from './PlayerPropertiesModal';
 import { PropertyDetailModal } from './PropertyDetailModal';
 import { CardModal } from './CardModal';
 import { TradeModal } from './TradeModal';
+import { NetworkManager } from '../../network/NetworkManager';
+import Animated, { useSharedValue, useAnimatedStyle, withRepeat, withSequence, withTiming, Easing, interpolateColor } from 'react-native-reanimated';
+
+const HALO_COLORS = ['#D0021B', '#007A3D', '#FFFFFF'] as const;
+
+const AnimatedHalo = () => {
+  const colorProgress = useSharedValue(0);
+
+  useEffect(() => {
+    colorProgress.value = withRepeat(
+      withTiming(3, { duration: 6000, easing: Easing.linear }),
+      -1,
+      false
+    );
+  }, []);
+
+  const mistStyle = useAnimatedStyle(() => {
+    const color = interpolateColor(
+      colorProgress.value,
+      [0, 1, 2, 3],
+      ['#D0021B', '#007A3D', '#FFFFFF', '#D0021B']
+    );
+    return {
+      shadowColor: color,
+    };
+  });
+
+  return (
+    <Animated.View style={[styles.logoMist, mistStyle]} />
+  );
+};
 
 /**
  * HUDLayer is an absolute overlay on top of the entire GameScreen.
@@ -82,50 +113,61 @@ export const HUDLayer = () => {
 
   return (
     <View style={styles.overlay} pointerEvents="box-none">
-      <SafeAreaView style={styles.safeArea} pointerEvents="box-none">
-        {/* ─── TOP: Player Cards + Chrono ─── */}
-        <View style={styles.topBar} pointerEvents="box-none">
-          {chronoDisplay && (
-            <View style={[
-              styles.chronoBadge,
-              chronoDisplay <= '00:30' && styles.chronoBadgeUrgent,
-            ]}>
-              <Text style={[
-                styles.chronoText,
-                chronoDisplay <= '00:30' && styles.chronoTextUrgent,
-              ]}>⏱ {chronoDisplay}</Text>
+      
+      {/* ─── TOP BAR (Stretches to absolute top) ─── */}
+      <View style={styles.topBar} pointerEvents="box-none">
+        <View style={styles.topHeader}>
+          {/* Left: Logo + Title */}
+          <View style={styles.topLeft}>
+            <View style={styles.logoWrapper}>
+              <AnimatedHalo />
+              <Image source={require('../../../assets/images/logo-lemur.webp')} style={styles.logoImageOnly} resizeMode="contain" />
             </View>
-          )}
-          <View style={styles.playerCardsRow}>
-            {players.map((player, index) => (
-              <View key={player.id} style={styles.playerCardContainer}>
-                <PlayerCard
-                  player={player}
-                  isActive={index === currentPlayerIndex}
-                />
-                {/* Timer display under active player card */}
-                {index === currentPlayerIndex && turnTimeRemaining !== null && !player.isBot && (
-                  <View style={[
-                    styles.timerContainer,
-                    turnTimeRemaining <= 5000 && styles.timerUrgent
-                  ]}>
-                    <Text style={[
-                      styles.timerText,
-                      turnTimeRemaining <= 5000 && styles.timerTextUrgent
-                    ]}>
-                      ⏱ {Math.ceil(turnTimeRemaining / 1000)}s
-                    </Text>
-                  </View>
-                )}
+            <Text style={styles.madapolyTitle}>
+              <Text style={{ color: '#FFF' }}>MA</Text>
+              <Text style={{ color: COLORS.madaRed }}>DA</Text>
+              <Text style={{ color: COLORS.madaGreen }}>POLY</Text>
+            </Text>
+          </View>
+
+          {/* Right: Room/Mode & Settings */}
+          <View style={styles.topRightGroup}>
+            <View style={styles.topSubInfo}>
+              <View style={styles.subInfoCol}>
+                <Text style={styles.subInfoLabel}>ROOM</Text>
+                <Text style={styles.subInfoValue}>
+                  {NetworkManager.getRoomCode() ? `#${NetworkManager.getRoomCode()}` : '#Locale'}
+                </Text>
               </View>
-            ))}
+              
+              <View style={styles.subInfoDivider} />
+              
+              <View style={styles.subInfoCol}>
+                <Text style={styles.subInfoLabel}>MODE</Text>
+                <Text style={[styles.subInfoValue, { color: networkRole === 'local' ? COLORS.gold : COLORS.success }]}>
+                  {networkRole === 'local' ? 'Solo' : 'En ligne'}
+                </Text>
+              </View>
+            </View>
+
+            <View style={styles.topActions}>
+              {chronoDisplay && (
+                <View style={[styles.chronoBadge, chronoDisplay <= '00:30' && styles.chronoBadgeUrgent]}>
+                  <Text style={[styles.chronoText, chronoDisplay <= '00:30' && styles.chronoTextUrgent]}>⏱ {chronoDisplay}</Text>
+                </View>
+              )}
+              <SettingsButton />
+            </View>
           </View>
         </View>
+      </View>
 
+      {/* ─── CENTER AREA (Transparent) ─── */}
+      <View style={styles.centerArea} pointerEvents="box-none">
+        
         <EventToast />
 
-        {/* ─── CENTER: Transparent (pass-through) ─── */}
-        <View style={styles.centerSpacer} pointerEvents="none">
+        <View style={styles.centerSpacer} pointerEvents="box-none">
           {/* ── GAME OVER BANNER ── */}
           {isGameOver && winner && (
             <View style={styles.gameOverBanner} pointerEvents="auto">
@@ -159,90 +201,108 @@ export const HUDLayer = () => {
           )}
         </View>
 
-        {/* ─── BOTTOM: Dice & Controls ─── */}
-        <View style={styles.bottomBar}>
-          {/* Dice result display */}
-          {!isGameOver && (
-            <View style={styles.diceContainer}>
-              <DiceDisplay diceRoll={lastDiceRoll} isRolling={isRolling} />
-            </View>
-          )}
+        {/* ─── FLOATING CONTROLS (Dice, then Players) just above bottom bar ─── */}
+        <View style={styles.floatingControlsContainer} pointerEvents="box-none">
+          
+          {/* Dice & Status */}
+          <View style={styles.centerControl} pointerEvents="auto">
+            {!isGameOver && (
+              <View style={styles.diceContainer}>
+                <DiceDisplay diceRoll={lastDiceRoll} isRolling={isRolling} />
+              </View>
+            )}
+            
+            {/* Status messages in center */}
+            {!canRoll && !isGameOver && !isJailDecision && turnPhase !== 'END_OF_TURN' && turnPhase !== 'WAITING_FOR_DECISION' && (
+              <View style={styles.phaseIndicator}>
+                <Text style={styles.phaseText}>
+                  {turnPhase === 'ANIMATING_MOVEMENT' && '⏳ Déplacement...'}
+                  {turnPhase === 'RESOLVING_SPACE' && '🔍 Résolution...'}
+                  {turnPhase === 'WAITING_FOR_DICE' && !isLocalPlayerTurn && `⏳ ${currentPlayer?.name || 'Joueur'} réfléchit...`}
+                </Text>
+              </View>
+            )}
+            {(isBotDecision || isBotJailDecision) && (
+              <View style={styles.phaseIndicator}>
+                <Text style={styles.phaseText}>🤖 Le bot réfléchit...</Text>
+              </View>
+            )}
+            {isJailDecision && !isLocalPlayerTurn && !currentPlayer?.isBot && (
+              <View style={styles.phaseIndicator}>
+                <Text style={styles.phaseText}>⛓️ {currentPlayer?.name} est en prison...</Text>
+              </View>
+            )}
+            {isLocalJailDecision && <JailPanel />}
+          </View>
 
-          {/* Roll button — only visible when it's time to roll */}
-          {canRoll && !isGameOver && (
-            <View style={styles.actionRow} pointerEvents="auto">
+          {/* Players Row */}
+          <View style={styles.playersWrapper} pointerEvents="auto">
+            <ScrollView 
+              horizontal 
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.playersScrollContent}
+              style={styles.playersScroll}
+            >
+              {players.map((player, index) => (
+                <View key={player.id} style={styles.playerCardContainer}>
+                  <PlayerCard
+                    player={player}
+                    isActive={index === currentPlayerIndex}
+                  />
+                  {/* Timer display under active player card */}
+                  {index === currentPlayerIndex && turnTimeRemaining !== null && !player.isBot && (
+                    <View style={[styles.timerContainer, turnTimeRemaining <= 5000 && styles.timerUrgent]}>
+                      <Text style={[styles.timerText, turnTimeRemaining <= 5000 && styles.timerTextUrgent]}>
+                        ⏱ {Math.ceil(turnTimeRemaining / 1000)}s
+                      </Text>
+                    </View>
+                  )}
+                </View>
+              ))}
+            </ScrollView>
+          </View>
+        </View>
+
+      </View>
+
+      {/* ─── BOTTOM BAR (Stretches to absolute bottom) ─── */}
+      <View style={styles.bottomBar} pointerEvents="box-none">
+        <View style={styles.controlsRow} pointerEvents="box-none">
+          {/* Left: Log */}
+          <View style={styles.sideControl} pointerEvents="auto">
+            <TouchableOpacity style={styles.actionCircleBtn} onPress={() => setIsGameLogOpen(true)} activeOpacity={0.7}>
+              <Text style={styles.actionCircleIcon}>📜</Text>
+            </TouchableOpacity>
+            <Text style={styles.actionCircleLabel}>Logs</Text>
+          </View>
+
+          {/* Center: Roll Button (if available) */}
+          <View style={styles.bottomCenterControl} pointerEvents="auto">
+            {canRoll && !isGameOver && (
               <TouchableOpacity
                 style={styles.rollButton}
                 onPress={() => {
                   if (isRolling) return;
                   setIsRolling(true);
-                  setTimeout(() => {
-                    rollDice(true);
-                    setIsRolling(false);
-                  }, 800);
+                  setTimeout(() => { rollDice(true); setIsRolling(false); }, 800);
                 }}
                 activeOpacity={0.8}
               >
                 <Text style={styles.rollButtonIcon}>🎲</Text>
                 <Text style={styles.rollButtonText}>LANCER</Text>
               </TouchableOpacity>
-              
-              <TouchableOpacity
-                style={styles.tradeButton}
-                onPress={() => setIsTradeModalOpen(true)}
-                activeOpacity={0.8}
-              >
-                <Text style={styles.tradeButtonIcon}>🤝</Text>
-              </TouchableOpacity>
-            </View>
-          )}
-
-          {/* Phase indicator (for non-interactive phases only) */}
-          {!canRoll && !isGameOver && !isJailDecision && turnPhase !== 'END_OF_TURN' && turnPhase !== 'WAITING_FOR_DECISION' && (
-            <View style={styles.phaseIndicator}>
-              <Text style={styles.phaseText}>
-                {turnPhase === 'ANIMATING_MOVEMENT' && '⏳ Déplacement...'}
-                {turnPhase === 'RESOLVING_SPACE' && '🔍 Résolution...'}
-                {turnPhase === 'WAITING_FOR_DICE' && !isLocalPlayerTurn && `⏳ ${currentPlayer?.name || 'Joueur'} réfléchit...`}
-              </Text>
-            </View>
-          )}
-
-          {/* Bot thinking indicator */}
-          {(isBotDecision || isBotJailDecision) && (
-            <View style={styles.phaseIndicator}>
-              <Text style={styles.phaseText}>🤖 Le bot réfléchit...</Text>
-            </View>
-          )}
-
-          {/* Jail panel for local human player */}
-          {isLocalJailDecision && <JailPanel />}
-
-          {/* Waiting for opponent's jail decision */}
-          {isJailDecision && !isLocalPlayerTurn && !currentPlayer?.isBot && (
-            <View style={styles.phaseIndicator}>
-              <Text style={styles.phaseText}>⛓️ {currentPlayer?.name} est en prison...</Text>
-            </View>
-          )}
-          {/* ─── Bottom-left: Log ─── */}
-          <View style={styles.bottomLeftBar}>
-            <TouchableOpacity
-              style={styles.iconBtn}
-              onPress={() => setIsGameLogOpen(true)}
-              activeOpacity={0.7}
-            >
-              <Text style={styles.iconBtnText}>📜</Text>
-            </TouchableOpacity>
+            )}
           </View>
-          {/* ─── Bottom-right: Settings ─── */}
-          <View style={styles.bottomRightBar}>
-            <SettingsButton />
+
+          {/* Right: Trade */}
+          <View style={styles.sideControl} pointerEvents="auto">
+            <TouchableOpacity style={styles.actionCircleBtn} onPress={() => setIsTradeModalOpen(true)} activeOpacity={0.7}>
+              <Text style={styles.actionCircleIcon}>🤝</Text>
+            </TouchableOpacity>
+            <Text style={styles.actionCircleLabel}>Échange</Text>
           </View>
         </View>
-      </SafeAreaView>
-
-      {/* ─── EVENT TOAST (slides from top) ─── */}
-      <EventToast />
+      </View>
 
       {/* ─── PROPERTY MODAL (full-screen overlay for human decisions) ─── */}
       <PropertyModal />
@@ -266,63 +326,110 @@ const styles = StyleSheet.create({
   overlay: {
     ...StyleSheet.absoluteFillObject,
     zIndex: 100,
+    justifyContent: 'space-between',
   },
-  safeArea: {
+  centerArea: {
     flex: 1,
-    paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight : 0,
+    width: '100%',
+    zIndex: 20, // Assure que les éléments flottants sont au-dessus du fond
   },
   topBar: {
-    paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight || 0 : 0,
-    paddingHorizontal: SPACING.sm,
-    paddingBottom: SPACING.md,
-    alignItems: 'center',
+    paddingTop: Platform.OS === 'ios' ? 48 : StatusBar.currentHeight || 24,
+    paddingHorizontal: SPACING.md,
+    paddingBottom: SPACING.sm,
+    backgroundColor: 'rgba(18, 18, 18, 0.95)',
+    borderBottomWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
     position: 'relative',
     zIndex: 10,
+    width: '100%',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 10,
+    elevation: 8,
   },
-  actionRow: {
+  topHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
+    justifyContent: 'space-between',
+    width: '100%',
   },
-  tradeButton: {
-    width: 46,
-    height: 46,
-    borderRadius: 23,
-    backgroundColor: 'rgba(255,255,255,0.08)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.12)',
+  topLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  logoWrapper: {
+    position: 'relative',
+    width: 42,
+    height: 42,
+    marginRight: 8,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  tradeButtonIcon: {
+  logoMist: {
+    position: 'absolute',
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    top: 16,
+    left: 16,
+    zIndex: -1,
+    backgroundColor: 'transparent',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 1,
+    shadowRadius: 25,
+    elevation: 20,
+  },
+  logoImageOnly: {
+    width: 42,
+    height: 42,
+  },
+  madapolyTitle: {
     fontSize: 20,
+    fontFamily: 'Inter_900Black',
+    letterSpacing: 2,
   },
-  bottomLeftBar: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    paddingBottom: SPACING.lg,
-    paddingLeft: SPACING.md,
-  },
-  bottomRightBar: {
-    position: 'absolute',
-    bottom: 0,
-    right: 0,
-    paddingBottom: SPACING.lg,
-    paddingRight: SPACING.md,
-  },
-  iconBtn: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    backgroundColor: 'rgba(255,255,255,0.07)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.1)',
-    justifyContent: 'center',
+  topRightGroup: {
+    flexDirection: 'row',
     alignItems: 'center',
+    gap: 12,
   },
-  iconBtnText: {
-    fontSize: 17,
+  topSubInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: BORDER_RADIUS.md,
+  },
+  subInfoCol: {
+    alignItems: 'flex-start',
+    justifyContent: 'center',
+  },
+  subInfoLabel: {
+    color: 'rgba(255,255,255,0.4)',
+    fontSize: 8,
+    fontFamily: 'Inter_700Bold',
+    letterSpacing: 1,
+    marginBottom: 2,
+  },
+  subInfoValue: {
+    color: COLORS.white,
+    fontSize: 10,
+    fontFamily: 'Inter_900Black',
+  },
+  subInfoDivider: {
+    width: 1,
+    height: 20,
+    backgroundColor: 'rgba(255,255,255,0.15)',
+  },
+  topActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
   },
   chronoBadge: {
     backgroundColor: 'rgba(18,18,18,0.85)',
@@ -345,22 +452,88 @@ const styles = StyleSheet.create({
   chronoTextUrgent: {
     color: '#EF4444',
   },
-  playerCardsRow: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    flexWrap: 'wrap',
-    gap: 6,
-  },
   centerSpacer: {
     flex: 1,
   },
 
   // ─── BOTTOM BAR ───
   bottomBar: {
+    paddingTop: SPACING.sm,
+    paddingBottom: Platform.OS === 'ios' ? 34 : SPACING.md,
+    width: '100%',
+    backgroundColor: 'rgba(18, 18, 18, 0.95)',
+    borderTopWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 10,
+    elevation: 8,
+    zIndex: 10,
+  },
+  controlsRow: {
+    flexDirection: 'row',
     alignItems: 'center',
-    paddingBottom: SPACING.lg,
+    justifyContent: 'space-between',
     paddingHorizontal: SPACING.md,
-    gap: 12,
+    width: '100%',
+  },
+  bottomCenterControl: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  sideControl: {
+    width: 60,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  // ─── FLOATING CONTROLS ───
+  floatingControlsContainer: {
+    width: '100%',
+    alignItems: 'center',
+    paddingBottom: SPACING.md,
+    zIndex: 20,
+  },
+  playersWrapper: {
+    width: '100%',
+    marginBottom: 8,
+  },
+  playersScroll: {
+    flexGrow: 0,
+  },
+  playersScrollContent: {
+    paddingHorizontal: SPACING.md,
+    gap: 6,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minWidth: '100%',
+  },
+  centerControl: {
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 8, // Ajout d'une marge sous les dés
+  },
+  actionCircleBtn: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.12)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  actionCircleIcon: {
+    fontSize: 20,
+  },
+  actionCircleLabel: {
+    color: 'rgba(255,255,255,0.6)',
+    fontSize: 10,
+    fontFamily: 'Inter_600SemiBold',
+    textAlign: 'center',
   },
   diceContainer: {
     backgroundColor: 'rgba(18, 18, 18, 0.85)',
@@ -400,7 +573,7 @@ const styles = StyleSheet.create({
   },
   rollButtonText: {
     color: COLORS.white,
-    fontSize: 15,
+    fontSize: 16,
     fontFamily: 'Inter_900Black',
     letterSpacing: 2,
   },

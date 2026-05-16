@@ -6,6 +6,7 @@ import { useGameStore, ConnectedClient } from '../store/useGameStore';
 import { RELAY_URL, RELAY_HTTP_URL } from '../constants/config';
 import { saveSession, loadSession, clearSession, loadGameState, clearGameState } from '../utils/sessionStorage';
 import { getRandomBotNames } from '../utils/botNames';
+import LogoLemur from '../../assets/images/logo-lemur.svg';
 
 type LobbyMode = 'select' | 'host' | 'client' | 'online_host' | 'online_client';
 
@@ -767,11 +768,9 @@ export const LobbyScreen = () => {
 
           {/* ── HEADER : Logo ── */}
           <View style={styles.logoBlock}>
-            <Image
-              source={require('../../assets/images/logo-lemur.webp')}
-              style={styles.logoImage}
-              resizeMode="contain"
-            />
+            <LogoLemur width={120} height={120} />
+            <Text style={styles.mainTitle}>MADAPOLY</Text>
+            <Text style={styles.subTitle}>Ariary Luxe Edition</Text>
           </View>
 
           {connectionError ? <Text style={styles.errorText}>{connectionError}</Text> : null}
@@ -1184,7 +1183,8 @@ const styles = StyleSheet.create({
 
   // ── Logo Header ──
   logoBlock: { alignItems: 'center', paddingTop: 40, paddingBottom: 20 },
-  logoImage: { width: 200, height: 120, resizeMode: 'contain' },
+  mainTitle: { fontSize: 32, fontFamily: 'Inter_900Black', color: '#FFF', letterSpacing: 3, marginTop: 12 },
+  subTitle: { fontSize: 14, fontFamily: 'Inter_700Bold', color: COLORS.madaGreen, letterSpacing: 1, marginTop: 4, textTransform: 'uppercase' },
   titleRowSmall: { flexDirection: 'row', alignItems: 'flex-end', marginBottom: 20 },
   titleMada: { fontSize: 42, fontFamily: 'Inter_900Black', color: COLORS.madaWhite, letterSpacing: 2 },
   titlePoly: { fontSize: 42, fontFamily: 'Inter_900Black', color: COLORS.madaRed, letterSpacing: 2 },

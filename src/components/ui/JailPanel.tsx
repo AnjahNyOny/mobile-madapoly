@@ -1,7 +1,16 @@
 import React from 'react';
-import { StyleSheet, View, Text, TouchableOpacity } from 'react-native';
+import {
+  StyleSheet,
+  View,
+  Text,
+  TouchableOpacity,
+  ScrollView,
+  Dimensions,
+} from 'react-native';
 import { useGameStore } from '../../store/useGameStore';
 import { COLORS, BORDER_RADIUS } from '../../styles/theme';
+
+const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 
 /**
  * JailPanel — Panneau d'actions affiché dans le HUD quand
@@ -24,7 +33,7 @@ export const JailPanel = () => {
   const currentPlayer = players[currentPlayerIndex];
   if (!currentPlayer) return null;
   if (turnPhase !== 'IN_JAIL_DECISION') return null;
-  // Host/local controls all non-bot players; client only controls their own assigned player
+
   const networkRole = useGameStore((s) => s.networkRole);
   const connectedClients = useGameStore((s) => s.connectedClients);
   const isHostOrLocal = networkRole === 'host' || networkRole === 'local';
@@ -36,7 +45,37 @@ export const JailPanel = () => {
 
   const canPayBail = currentPlayer.balance >= 50;
   const hasCard = currentPlayer.hasGetOutOfJailCard;
-  const jailTurn = currentPlayer.jailTurns + 1; // Display 1-based
+  const jailTurn = currentPlayer.jailTurns + 1;
+
+  const actions = [
+    {
+      key: 'pay',
+      icon: '💰',
+      label: 'Payer la caution',
+      detail: canPayBail ? '50 AR' : 'Pas assez (50 AR)',
+      onPress: payBail,
+      disabled: !canPayBail,
+      style: styles.payButton,
+    },
+    {
+      key: 'card',
+      icon: '🃏',
+      label: 'Utiliser une carte',
+      detail: hasCard ? 'Sortir de prison' : 'Aucune carte',
+      onPress: useJailCard,
+      disabled: !hasCard,
+      style: styles.cardButton,
+    },
+    {
+      key: 'roll',
+      icon: '🎲',
+      label: 'Tenter un double',
+      detail: jailTurn === 3 ? 'Dernière chance !' : 'Double = évasion',
+      onPress: rollForJailBreak,
+      disabled: false,
+      style: styles.rollButton,
+    },
+  ];
 
   return (
     <View style={styles.container}>
@@ -54,107 +93,93 @@ export const JailPanel = () => {
         <View style={[styles.progressFill, { width: `${(jailTurn / 3) * 100}%` }]} />
       </View>
 
-      {/* Action buttons */}
-      <View style={styles.actions}>
-        {/* Pay Bail */}
-        <TouchableOpacity
-          style={[styles.actionButton, styles.payButton, !canPayBail && styles.disabledButton]}
-          onPress={payBail}
-          disabled={!canPayBail}
-          activeOpacity={0.8}
-        >
-          <Text style={styles.actionIcon}>💰</Text>
-          <View style={styles.actionTextGroup}>
-            <Text style={styles.actionLabel}>Payer la caution</Text>
-            <Text style={[styles.actionDetail, !canPayBail && styles.disabledText]}>
-              {canPayBail ? '50 AR' : 'Pas assez (50 AR)'}
-            </Text>
-          </View>
-        </TouchableOpacity>
-
-        {/* Use Card */}
-        <TouchableOpacity
-          style={[styles.actionButton, styles.cardButton, !hasCard && styles.disabledButton]}
-          onPress={useJailCard}
-          disabled={!hasCard}
-          activeOpacity={0.8}
-        >
-          <Text style={styles.actionIcon}>🃏</Text>
-          <View style={styles.actionTextGroup}>
-            <Text style={styles.actionLabel}>Utiliser une carte</Text>
-            <Text style={[styles.actionDetail, !hasCard && styles.disabledText]}>
-              {hasCard ? 'Sortir de prison' : 'Aucune carte'}
-            </Text>
-          </View>
-        </TouchableOpacity>
-
-        {/* Roll for double */}
-        <TouchableOpacity
-          style={[styles.actionButton, styles.rollButton]}
-          onPress={rollForJailBreak}
-          activeOpacity={0.8}
-        >
-          <Text style={styles.actionIcon}>🎲</Text>
-          <View style={styles.actionTextGroup}>
-            <Text style={styles.actionLabel}>Tenter un double</Text>
-            <Text style={styles.actionDetail}>
-              {jailTurn === 3 ? 'Dernière chance !' : 'Double = évasion'}
-            </Text>
-          </View>
-        </TouchableOpacity>
-      </View>
+      {/* Action buttons — scrollable if screen is too small */}
+      <ScrollView
+        style={styles.actionsScroll}
+        contentContainerStyle={styles.actionsContent}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+      >
+        {actions.map((a) => (
+          <TouchableOpacity
+            key={a.key}
+            style={[
+              styles.actionButton,
+              a.style,
+              a.disabled && styles.disabledButton,
+            ]}
+            onPress={a.onPress}
+            disabled={a.disabled}
+            activeOpacity={0.75}
+          >
+            <Text style={styles.actionIcon}>{a.icon}</Text>
+            <View style={styles.actionTextGroup}>
+              <Text style={styles.actionLabel}>{a.label}</Text>
+              <Text
+                style={[
+                  styles.actionDetail,
+                  a.disabled && styles.disabledText,
+                ]}
+              >
+                {a.detail}
+              </Text>
+            </View>
+          </TouchableOpacity>
+        ))}
+      </ScrollView>
     </View>
   );
 };
 
 const styles = StyleSheet.create({
   container: {
-    backgroundColor: 'rgba(18, 18, 18, 0.95)',
-    borderRadius: 20,
+    backgroundColor: 'rgba(18, 18, 18, 0.96)',
+    borderRadius: BORDER_RADIUS.lg,
     padding: 16,
-    marginHorizontal: 16,
+    width: Math.min(SCREEN_W * 0.9, 420),
+    maxHeight: SCREEN_H * 0.55,
     borderWidth: 1,
     borderColor: 'rgba(254, 219, 1, 0.25)',
-    // Glow
     shadowColor: '#FEDB01',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.2,
     shadowRadius: 16,
     elevation: 12,
+    alignSelf: 'center',
   },
 
   // ── Header ──
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
-    marginBottom: 10,
+    marginBottom: 8,
   },
   headerIcon: {
-    fontSize: 28,
+    fontSize: 24,
+    marginRight: 10,
   },
   headerText: {
     flex: 1,
   },
   title: {
     color: '#FEDB01',
-    fontSize: 18,
+    fontSize: 16,
     fontFamily: 'Inter_900Black',
     letterSpacing: 2,
   },
   subtitle: {
     color: 'rgba(255,255,255,0.5)',
-    fontSize: 12,
+    fontSize: 11,
     fontFamily: 'Inter_400Regular',
-    marginTop: 2,
+    marginTop: 1,
   },
 
   // ── Progress bar ──
   progressTrack: {
-    height: 4,
-    backgroundColor: 'rgba(255,255,255,0.1)',
+    height: 3,
+    backgroundColor: 'rgba(255,255,255,0.08)',
     borderRadius: 2,
-    marginBottom: 14,
+    marginBottom: 10,
     overflow: 'hidden',
   },
   progressFill: {
@@ -164,17 +189,21 @@ const styles = StyleSheet.create({
   },
 
   // ── Actions ──
-  actions: {
-    gap: 8,
+  actionsScroll: {
+    flex: 1,
+  },
+  actionsContent: {
+    gap: 6,
+    paddingBottom: 4,
   },
   actionButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 12,
-    paddingHorizontal: 14,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
     borderRadius: BORDER_RADIUS.md,
-    gap: 12,
     borderWidth: 1,
+    minHeight: 52,
   },
   payButton: {
     backgroundColor: 'rgba(31, 178, 90, 0.12)',
@@ -189,26 +218,30 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(225, 2, 20, 0.3)',
   },
   disabledButton: {
-    opacity: 0.35,
+    opacity: 0.3,
   },
   actionIcon: {
-    fontSize: 22,
+    fontSize: 20,
+    marginRight: 10,
+    width: 28,
+    textAlign: 'center',
   },
   actionTextGroup: {
     flex: 1,
+    justifyContent: 'center',
   },
   actionLabel: {
     color: COLORS.white,
-    fontSize: 14,
+    fontSize: 13,
     fontFamily: 'Inter_700Bold',
   },
   actionDetail: {
-    color: 'rgba(255,255,255,0.5)',
-    fontSize: 11,
+    color: 'rgba(255,255,255,0.45)',
+    fontSize: 10,
     fontFamily: 'Inter_400Regular',
-    marginTop: 2,
+    marginTop: 1,
   },
   disabledText: {
-    color: 'rgba(255,255,255,0.3)',
+    color: 'rgba(255,255,255,0.25)',
   },
 });

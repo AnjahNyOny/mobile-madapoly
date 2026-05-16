@@ -97,10 +97,12 @@ export const SpaceTile = React.memo(({ space, layout }: SpaceTileProps) => {
     }
   };
 
-  // Font sizes
+  // Font sizes & icon size (proportional to tile dimensions)
   const nameFontSize = isCorner ? 11 : 7;
   const priceFontSize = isCorner ? 9 : 6;
-  const iconSize = isCorner ? 22 : 14;
+  const iconSize = isCorner
+    ? Math.min(width, height) * 0.48
+    : Math.min(width, height) * 0.60;
 
   return (
     <TouchableOpacity
@@ -123,7 +125,7 @@ export const SpaceTile = React.memo(({ space, layout }: SpaceTileProps) => {
       <View style={[styles.contentContainer, getContentPadding()]}>
         {!isProperty && (
           <View style={{ marginBottom: 2 }}>
-            <TileIconRenderer type={space.type} size={iconSize} color="#333333" />
+            <TileIconRenderer spaceId={space.id} type={space.type} size={iconSize} color="#333333" />
           </View>
         )}
         <Text

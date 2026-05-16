@@ -44,9 +44,7 @@ export function useGameSounds() {
     // Son d'événement : quand lastEvent change
     if (lastEvent && lastEvent !== prevEvent) {
       switch (lastEvent.type) {
-        case 'go-bonus':
-          playSound('depart');
-          break;
+        // go-bonus (départ) est géré dans TokenLayer quand le pion atteint la case 0
         case 'jail':
           playSound('jail');
           break;

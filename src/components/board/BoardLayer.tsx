@@ -13,27 +13,13 @@ import { OwnershipPlaques } from './OwnershipPlaques';
 export const BoardLayer = () => {
   return (
     <View style={styles.board}>
-      {/* Center area — the "inside" of the board */}
+      {/* Center area — custom central board image */}
       <View style={styles.centerArea}>
-        <View style={styles.logoContainer}>
-          {/* Lemur + flag superposés */}
-          <View style={styles.logoStack}>
-            <Image
-              source={require('../../../assets/images/flag-for-madagascar-svgrepo-com.png')}
-              style={styles.logoFlag}
-            />
-            <Image
-              source={require('../../../assets/images/lemur-madagascar-svgrepo-com.png')}
-              style={styles.logoLemur}
-            />
-          </View>
-          <View style={styles.titleRow}>
-            <Text style={styles.logoMada}>MADA</Text>
-            <Text style={styles.logoPoly}>POLY</Text>
-          </View>
-          <View style={styles.logoDivider} />
-          <Text style={styles.logoSubtitle}>Édition Ariary Luxe</Text>
-        </View>
+        <Image
+          source={require('../../../assets/images/special-icons/central-board.webp')}
+          style={styles.centerImage}
+          resizeMode="contain"
+        />
       </View>
 
       {/* Render all 40 tiles */}
@@ -69,61 +55,13 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 1.5,
-    borderColor: 'rgba(255,255,255,0.08)',
+    borderColor: 'rgba(0,0,0,0.15)',
     borderRadius: 6,
-    backgroundColor: '#0D3518',
+    backgroundColor: '#FFFFFF',
+    overflow: 'hidden',
   },
-  logoContainer: {
-    alignItems: 'center',
-    padding: 12,
-  },
-  logoStack: {
-    width: BOARD_SIZE * 0.16,
-    height: BOARD_SIZE * 0.16,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 8,
-  },
-  logoFlag: {
-    position: 'absolute',
-    width: BOARD_SIZE * 0.16,
-    height: BOARD_SIZE * 0.16,
-    resizeMode: 'contain',
-    opacity: 0.30,
-  },
-  logoLemur: {
-    width: BOARD_SIZE * 0.13,
-    height: BOARD_SIZE * 0.13,
-    resizeMode: 'contain',
-  },
-  titleRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-  },
-  logoMada: {
-    fontSize: BOARD_SIZE * 0.038,
-    fontFamily: 'Inter_900Black',
-    color: '#FFFFFF',
-    letterSpacing: 2,
-  },
-  logoPoly: {
-    fontSize: BOARD_SIZE * 0.038,
-    fontFamily: 'Inter_900Black',
-    color: '#D0021B',
-    letterSpacing: 2,
-  },
-  logoDivider: {
-    width: BOARD_SIZE * 0.12,
-    height: 2,
-    backgroundColor: '#007A3D',
-    marginVertical: 6,
-    borderRadius: 2,
-  },
-  logoSubtitle: {
-    fontSize: BOARD_SIZE * 0.018,
-    fontFamily: 'Inter_700Bold',
-    color: '#007A3D',
-    letterSpacing: 3,
-    textTransform: 'uppercase',
+  centerImage: {
+    width: '100%',
+    height: '100%',
   },
 });

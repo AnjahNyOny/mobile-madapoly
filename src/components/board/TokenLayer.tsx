@@ -18,6 +18,7 @@ import { playSound } from '../../utils/soundEffects';
 // Helpers appelés depuis les callbacks Reanimated (doivent être stables)
 const playReboundSound = () => playSound('rebound2');
 const playLastReboundSound = () => playSound('last-rebound');
+const playDepartSound = () => playSound('depart');
 
 // ─── CONFIGURATION ───
 const TOKEN_SIZE = 28;
@@ -219,9 +220,13 @@ const PlayerToken = React.memo(({
       withTiming(animX.value, { duration: PRE_MOVE_DELAY }),
       ...stepTargets.map((t, i) => {
         const isLast = i === stepTargets.length - 1;
+        const isGoTile = path[i] === 0;
         return withTiming(t.x, { duration: STEP_DURATION, easing: STEP_EASING }, () => {
           runOnJS(panFns[i])();
           runOnJS(isLast ? playLastReboundSound : playReboundSound)();
+          if (isGoTile) {
+            runOnJS(playDepartSound)();
+          }
         });
       }),
     ];

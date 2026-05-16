@@ -483,7 +483,12 @@ export const useGameStore = create<GameStoreState & GameActions>((setOriginal, g
         if (!propertyRecord || !propertyRecord.ownerId) {
             const price = space.price || 0;
             if (player.balance >= price) {
-                set({ turnPhase: 'WAITING_FOR_DECISION', actionDeadline: Date.now() + 15000 });
+                // Small delay so player sees the token land before modal appears
+                setTimeout(() => {
+                  set({ turnPhase: 'WAITING_FOR_DECISION', actionDeadline: Date.now() + 15000 });
+                  broadcastIfHost(get);
+                }, 600);
+                return; // broadcastIfHost called inside setTimeout
             } else {
                 set({ 
                   turnPhase: 'END_OF_TURN',

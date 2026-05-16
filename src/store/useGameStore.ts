@@ -11,7 +11,7 @@ import { saveGameState } from '../utils/sessionStorage';
 let turnTimeoutTimer: any = null;
 let turnUpdateInterval: any = null;
 let turnTimeoutStart: number = 0;
-const TURN_TIMEOUT_MS = 20000; // 20 seconds
+const TURN_TIMEOUT_MS = 15000; // 15 seconds
 
 // ─── Host grace timer (client-side, global so GameScreen can cancel it) ───
 let hostGraceTimer: ReturnType<typeof setTimeout> | null = null;
@@ -1035,7 +1035,7 @@ export const useGameStore = create<GameStoreState & GameActions>((setOriginal, g
         actionDeadline: null,
         lastEvent: { type: 'info', message: `${currentPlayer.name} a fait un double et rejoue !`, emoji: '🎲' },
       });
-      // Restart timer for the new turn (20 seconds again)
+      // Restart timer for the new turn (15 seconds again)
       get().startTurnTimeout();
       broadcastIfHost(get);
       return;
@@ -1547,7 +1547,7 @@ export const useGameStore = create<GameStoreState & GameActions>((setOriginal, g
       }
     }, 100);
     
-    // Set new timeout for 20 seconds
+    // Set new timeout for 15 seconds
     turnTimeoutTimer = setTimeout(() => {
       if (turnUpdateInterval) {
         clearInterval(turnUpdateInterval);

@@ -9,6 +9,7 @@ import { saveGameState } from '../utils/sessionStorage';
 
 // ─── Turn timeout system ───
 let turnTimeoutTimer: any = null;
+let turnUpdateInterval: any = null;
 let turnTimeoutStart: number = 0;
 const TURN_TIMEOUT_MS = 20000; // 20 seconds
 
@@ -1491,61 +1492,77 @@ export const useGameStore = create<GameStoreState & GameActions>((setOriginal, g
   startTurnTimeout: () => {
     const { networkRole, currentPlayerIndex, players } = get();
     
-    // Only host manages the actual timeout, but all players can see the timer
-    if (networkRole === 'host') {
-      // Clear existing timeout
-      if (turnTimeoutTimer) {
-        clearTimeout(turnTimeoutTimer);
-        turnTimeoutTimer = null;
-      }
-      
-      // Don't set timeout for bots
-      const currentPlayer = players[currentPlayerIndex];
-      if (currentPlayer?.isBot) {
-        set({ turnTimeRemaining: null });
-        return;
-      }
-      // Record start time and set initial remaining time
-      turnTimeoutStart = Date.now();
-      set({ turnTimeRemaining: TURN_TIMEOUT_MS });
-      
-      // Update timer every 100ms and broadcast to clients
-      const updateInterval = setInterval(() => {
-        const elapsed = Date.now() - turnTimeoutStart;
-        const remaining = Math.max(0, TURN_TIMEOUT_MS - elapsed);
-        set({ turnTimeRemaining: remaining });
-        
-        // Broadcast timer update to clients
-        NetworkManager.broadcast({
-          type: 'TIMER_UPDATE',
-          payload: { turnTimeRemaining: remaining }
-        });
-        
-        if (remaining <= 0) {
-          clearInterval(updateInterval);
-        }
-      }, 100);
-      
-      // Set new timeout for 20 seconds
-      turnTimeoutTimer = setTimeout(() => {
-        clearInterval(updateInterval);
-        get().handleTimeout();
-      }, TURN_TIMEOUT_MS);
-    } else {
-      // For clients, just show the timer without managing the timeout
+    // Clients don't manage timeouts — host handles them
+    if (networkRole === 'client') {
       const currentPlayer = players[currentPlayerIndex];
       if (currentPlayer?.isBot) {
         set({ turnTimeRemaining: null });
       } else {
         set({ turnTimeRemaining: TURN_TIMEOUT_MS });
       }
+      return;
     }
+
+    // Host AND local manage the actual timeout
+    // Clear existing timers
+    if (turnTimeoutTimer) {
+      clearTimeout(turnTimeoutTimer);
+      turnTimeoutTimer = null;
+    }
+    if (turnUpdateInterval) {
+      clearInterval(turnUpdateInterval);
+      turnUpdateInterval = null;
+    }
+    
+    // Don't set timeout for bots
+    const currentPlayer = players[currentPlayerIndex];
+    if (currentPlayer?.isBot) {
+      set({ turnTimeRemaining: null });
+      return;
+    }
+
+    // Record start time and set initial remaining time
+    turnTimeoutStart = Date.now();
+    set({ turnTimeRemaining: TURN_TIMEOUT_MS });
+    
+    // Update timer every 100ms
+    turnUpdateInterval = setInterval(() => {
+      const elapsed = Date.now() - turnTimeoutStart;
+      const remaining = Math.max(0, TURN_TIMEOUT_MS - elapsed);
+      set({ turnTimeRemaining: remaining });
+      
+      // Broadcast timer update to clients (host only)
+      if (networkRole === 'host') {
+        NetworkManager.broadcast({
+          type: 'TIMER_UPDATE',
+          payload: { turnTimeRemaining: remaining }
+        });
+      }
+      
+      if (remaining <= 0) {
+        clearInterval(turnUpdateInterval);
+        turnUpdateInterval = null;
+      }
+    }, 100);
+    
+    // Set new timeout for 20 seconds
+    turnTimeoutTimer = setTimeout(() => {
+      if (turnUpdateInterval) {
+        clearInterval(turnUpdateInterval);
+        turnUpdateInterval = null;
+      }
+      get().handleTimeout();
+    }, TURN_TIMEOUT_MS);
   },
 
   clearTurnTimeout: () => {
     if (turnTimeoutTimer) {
       clearTimeout(turnTimeoutTimer);
       turnTimeoutTimer = null;
+    }
+    if (turnUpdateInterval) {
+      clearInterval(turnUpdateInterval);
+      turnUpdateInterval = null;
     }
     set({ turnTimeRemaining: null });
   },

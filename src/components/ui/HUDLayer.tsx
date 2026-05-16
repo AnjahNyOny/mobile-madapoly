@@ -123,11 +123,6 @@ export const HUDLayer = () => {
               <AnimatedHalo />
               <Image source={require('../../../assets/images/logo-lemur.webp')} style={styles.logoImageOnly} resizeMode="contain" />
             </View>
-            <Text style={styles.madapolyTitle}>
-              <Text style={{ color: '#FFF' }}>MA</Text>
-              <Text style={{ color: COLORS.madaRed }}>DA</Text>
-              <Text style={{ color: COLORS.madaGreen }}>POLY</Text>
-            </Text>
           </View>
 
           {/* Right: Room/Mode & Settings */}

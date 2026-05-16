@@ -76,6 +76,10 @@ export const GameScreen = () => {
       if (packet.type === 'GAME_START') {
         useGameStore.getState().syncState(packet.payload);
       }
+
+      if (packet.type === 'RETURN_TO_LOBBY') {
+        useGameStore.getState().setAppScreen('lobby');
+      }
     };
 
     NetworkManager.onMessage(handleMessage);

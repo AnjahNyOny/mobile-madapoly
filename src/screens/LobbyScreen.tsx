@@ -76,6 +76,7 @@ export const LobbyScreen = () => {
   const connectedClients = useGameStore(s => s.connectedClients);
   const setConnectedClients = useGameStore(s => s.setConnectedClients);
   const [isConnecting, setIsConnecting] = useState(false);
+  const [isLocalReady, setIsLocalReady] = useState(false);
   const [connectionError, setConnectionError] = useState('');
   const [botCount, setBotCount] = useState(3); // Default: 3 bots for solo, adjusts for network
   // Online mode state
@@ -185,15 +186,21 @@ export const LobbyScreen = () => {
     }
   };
 
-  // Bug fix: reset local UI state when store returns to lobby (e.g. after DisconnectModal "Quitter")
+  // Bug fix: reset local UI state when store returns to lobby
   useEffect(() => {
     if (appScreen === 'lobby') {
-      setMode('select');
-      setConnectedClients([]);
-      setRoomCode('');
-      setClientInputRoomCode('');
-      setConnectionError('');
-      setIsConnecting(false);
+      const state = useGameStore.getState();
+      if (!state.localPlayerId) {
+        // Full reset (quit room)
+        setMode('select');
+        setConnectedClients([]);
+        setRoomCode('');
+        setClientInputRoomCode('');
+        setConnectionError('');
+        setIsConnecting(false);
+      }
+      // Always reset ready state on returning to lobby
+      setIsLocalReady(false);
     }
   }, [appScreen]);
 
@@ -298,6 +305,13 @@ export const LobbyScreen = () => {
           c.socketId === clientId 
             ? { ...c, name: packet.payload.name, avatar: packet.payload.avatar }
             : c
+        ));
+        return;
+      }
+
+      if (packet.type === 'PLAYER_READY' && clientId) {
+        setConnectedClients(prev => prev.map(c => 
+          c.socketId === clientId ? { ...c, isReady: packet.payload.isReady } : c
         ));
         return;
       }
@@ -581,8 +595,8 @@ export const LobbyScreen = () => {
       }))
     ];
     
-    // Add bots up to botCount (but cap at 4 total)
-    const maxBots = Math.min(botCount, 4 - playersSetup.length);
+    // Add bots up to botCount (but cap at 8 total)
+    const maxBots = Math.min(botCount, 8 - playersSetup.length);
     const botNames = getRandomBotNames(maxBots);
     for (let i = 0; i < maxBots; i++) {
       playersSetup.push({ 
@@ -625,7 +639,7 @@ export const LobbyScreen = () => {
   };
 
   // Max bots for host mode depends on connected clients
-  const maxBotsForHost = 4 - 1 - connectedClients.length; // 4 - host - clients
+  const maxBotsForHost = 8 - 1 - connectedClients.length; // 8 - host - clients
   const minBotsForHost = Math.max(0, 2 - 1 - connectedClients.length); // ensure >= 2 total
 
   const startSolo = () => {
@@ -721,7 +735,7 @@ export const LobbyScreen = () => {
   const getTokenImage = (avatar?: string) => TOKENS.find(t => t.id === avatar)?.image ?? null;
 
   // ── Player slot card (shared) ──
-  const PlayerSlot = ({ avatar, name, role, waiting }: { avatar?: string; name?: string; role?: string; waiting?: boolean }) => {
+  const PlayerSlot = ({ avatar, name, role, waiting, isReady }: { avatar?: string; name?: string; role?: string; waiting?: boolean; isReady?: boolean }) => {
     const img = avatar ? getTokenImage(avatar) : null;
     return (
       <View style={waiting ? styles.playerSlotWaiting : styles.playerSlot}>
@@ -735,7 +749,7 @@ export const LobbyScreen = () => {
           <Text style={styles.slotName}>{waiting ? 'En attente…' : name || 'Joueur'}</Text>
           {!waiting && <Text style={styles.slotRole}>{role}</Text>}
         </View>
-        {!waiting && (
+        {!waiting && isReady && (
           <View style={styles.slotReady}>
             <Text style={styles.slotReadyText}>✓</Text>
           </View>
@@ -831,7 +845,7 @@ export const LobbyScreen = () => {
                   {expandedMode === 'solo' && (
                     <View style={styles.modeBody}>
                       <WinOptions />
-                      <BotStepper min={1} max={3} />
+                      <BotStepper min={1} max={7} />
                       <TouchableOpacity style={styles.launchBtn} onPress={startSolo}>
                         <Text style={styles.launchBtnText}>LANCER</Text>
                       </TouchableOpacity>
@@ -998,14 +1012,20 @@ export const LobbyScreen = () => {
             <Text style={styles.ipText}>{hostIp || '…'}</Text>
             <Text style={styles.hintText}>Partagez cette IP avec vos amis</Text>
             <View style={styles.playerCardsList}>
-              <PlayerSlot avatar={localPlayerAvatar} name={localPlayerName} role="Hôte 👑" />
+              <PlayerSlot avatar={localPlayerAvatar} name={localPlayerName} role="Hôte 👑" isReady={true} />
               {connectedClients.length === 0
                 ? <PlayerSlot waiting />
-                : connectedClients.map((c, i) => <PlayerSlot key={c.socketId} avatar={c.avatar} name={c.name || `Joueur ${i+2}`} role="Client" />)}
+                : connectedClients.map((c, i) => <PlayerSlot key={c.socketId} avatar={c.avatar} name={c.name || `Joueur ${i+2}`} role="Client" isReady={c.isReady} />)}
             </View>
-            <BotStepper min={Math.max(0, 2 - 1 - connectedClients.length)} max={4 - 1 - connectedClients.length} />
-            <TouchableOpacity style={[styles.launchBtn, { marginTop: 24, width: '100%' }]} onPress={startGame}>
-              <Text style={styles.launchBtnText}>{connectedClients.length === 0 ? 'LANCER AVEC BOTS' : 'LANCER'}</Text>
+            <BotStepper min={Math.max(0, 2 - 1 - connectedClients.length)} max={8 - 1 - connectedClients.length} />
+            <TouchableOpacity 
+              style={[styles.launchBtn, { marginTop: 24, width: '100%' }, connectedClients.length > 0 && !connectedClients.every(c => c.isReady) && { opacity: 0.5 }]} 
+              onPress={startGame}
+              disabled={connectedClients.length > 0 && !connectedClients.every(c => c.isReady)}
+            >
+              <Text style={styles.launchBtnText}>
+                {connectedClients.length === 0 ? 'LANCER AVEC BOTS' : connectedClients.every(c => c.isReady) ? 'LANCER' : 'ATTENTE DES JOUEURS'}
+              </Text>
             </TouchableOpacity>
             <TouchableOpacity style={styles.cancelLink} onPress={() => { NetworkManager.closeServer(); setMode('select'); }}>
               <Text style={styles.cancelText}>Annuler</Text>
@@ -1023,9 +1043,25 @@ export const LobbyScreen = () => {
           </View>
           <View style={styles.content}>
             <Text style={styles.pageTitle}>Connecté à {clientInputIp}</Text>
-            <PlayerSlot avatar={localPlayerAvatar} name={localPlayerName} role="Connecté ✓" />
-            <ActivityIndicator size="large" color={COLORS.primary} style={{ marginVertical: 30 }} />
-            <Text style={styles.waitText}>En attente de l'hôte…</Text>
+            <PlayerSlot avatar={localPlayerAvatar} name={localPlayerName} role="Connecté ✓" isReady={isLocalReady} />
+            
+            {!isLocalReady ? (
+              <TouchableOpacity 
+                style={[styles.launchBtn, { marginTop: 30 }]} 
+                onPress={() => {
+                  setIsLocalReady(true);
+                  NetworkManager.sendMessage({ type: 'PLAYER_READY', payload: { isReady: true } });
+                }}
+              >
+                <Text style={styles.launchBtnText}>JE SUIS PRÊT</Text>
+              </TouchableOpacity>
+            ) : (
+              <>
+                <ActivityIndicator size="large" color={COLORS.primary} style={{ marginVertical: 30 }} />
+                <Text style={styles.waitText}>En attente de l'hôte…</Text>
+              </>
+            )}
+
             <TouchableOpacity style={styles.cancelLink} onPress={() => { NetworkManager.disconnect(); setMode('select'); }}>
               <Text style={styles.cancelText}>Quitter</Text>
             </TouchableOpacity>
@@ -1051,13 +1087,13 @@ export const LobbyScreen = () => {
 
             <Text style={[styles.sectionLabel, { marginTop: 20 }]}>JOUEURS</Text>
             <View style={styles.playerCardsList}>
-              <PlayerSlot avatar={localPlayerAvatar} name={localPlayerName} role="Hôte 👑" />
+              <PlayerSlot avatar={localPlayerAvatar} name={localPlayerName} role="Hôte 👑" isReady={true} />
               {connectedClients.length === 0
                 ? <PlayerSlot waiting />
-                : connectedClients.map((c, i) => <PlayerSlot key={c.socketId} avatar={c.avatar} name={c.name || `Joueur ${i+2}`} role="En ligne" />)}
+                : connectedClients.map((c, i) => <PlayerSlot key={c.socketId} avatar={c.avatar} name={c.name || `Joueur ${i+2}`} role="En ligne" isReady={c.isReady} />)}
             </View>
 
-            <BotStepper min={Math.max(0, 2 - 1 - connectedClients.length)} max={4 - 1 - connectedClients.length} />
+            <BotStepper min={Math.max(0, 2 - 1 - connectedClients.length)} max={8 - 1 - connectedClients.length} />
 
             {pendingRequests.length > 0 && (
               <View style={styles.pendingBlock}>
@@ -1077,8 +1113,14 @@ export const LobbyScreen = () => {
               </View>
             )}
 
-            <TouchableOpacity style={[styles.launchBtn, { marginTop: 24, width: '100%' }]} onPress={startGame}>
-              <Text style={styles.launchBtnText}>{connectedClients.length === 0 ? 'LANCER AVEC BOTS' : 'LANCER'}</Text>
+            <TouchableOpacity 
+              style={[styles.launchBtn, { marginTop: 24, width: '100%' }, connectedClients.length > 0 && !connectedClients.every(c => c.isReady) && { opacity: 0.5 }]} 
+              onPress={startGame}
+              disabled={connectedClients.length > 0 && !connectedClients.every(c => c.isReady)}
+            >
+              <Text style={styles.launchBtnText}>
+                {connectedClients.length === 0 ? 'LANCER AVEC BOTS' : connectedClients.every(c => c.isReady) ? 'LANCER' : 'ATTENTE DES JOUEURS'}
+              </Text>
             </TouchableOpacity>
             <TouchableOpacity style={styles.cancelLink} onPress={() => { NetworkManager.cleanup(); setConnectedClients([]); setRoomCode(''); setMode('select'); }}>
               <Text style={styles.cancelText}>Annuler</Text>
@@ -1100,9 +1142,25 @@ export const LobbyScreen = () => {
           <View style={styles.content}>
             <Text style={styles.sectionLabel}>ROOM</Text>
             <Text style={styles.roomCode}>{clientInputRoomCode.toUpperCase()}</Text>
-            <PlayerSlot avatar={localPlayerAvatar} name={localPlayerName} role="Connecté ✓" />
-            <ActivityIndicator size="large" color={COLORS.primary} style={{ marginVertical: 30 }} />
-            <Text style={styles.waitText}>En attente de l'hôte…</Text>
+            <PlayerSlot avatar={localPlayerAvatar} name={localPlayerName} role="Connecté ✓" isReady={isLocalReady} />
+            
+            {!isLocalReady ? (
+              <TouchableOpacity 
+                style={[styles.launchBtn, { marginTop: 30 }]} 
+                onPress={() => {
+                  setIsLocalReady(true);
+                  NetworkManager.sendMessage({ type: 'PLAYER_READY', payload: { isReady: true } });
+                }}
+              >
+                <Text style={styles.launchBtnText}>JE SUIS PRÊT</Text>
+              </TouchableOpacity>
+            ) : (
+              <>
+                <ActivityIndicator size="large" color={COLORS.primary} style={{ marginVertical: 30 }} />
+                <Text style={styles.waitText}>En attente de l'hôte…</Text>
+              </>
+            )}
+
             <TouchableOpacity style={styles.cancelLink} onPress={() => { clearSession(); setSavedSession(null); NetworkManager.cleanup(); setMode('select'); }}>
               <Text style={styles.cancelText}>Quitter</Text>
             </TouchableOpacity>

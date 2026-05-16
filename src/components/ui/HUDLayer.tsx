@@ -128,13 +128,33 @@ export const HUDLayer = () => {
         <View style={styles.centerSpacer} pointerEvents="none">
           {/* ── GAME OVER BANNER ── */}
           {isGameOver && winner && (
-            <View style={styles.gameOverBanner}>
+            <View style={styles.gameOverBanner} pointerEvents="auto">
               <Text style={styles.gameOverCrown}>👑</Text>
               <Text style={styles.gameOverTitle}>VICTOIRE !</Text>
               <Text style={styles.gameOverName}>{winner.name}</Text>
               <Text style={styles.gameOverBalance}>
                 Fortune finale : {winner.balance.toLocaleString()} AR
               </Text>
+
+              <View style={styles.gameOverActions}>
+                {isHostOrLocal && (
+                  <TouchableOpacity 
+                    style={styles.gameOverBtn}
+                    onPress={() => useGameStore.getState().returnToRoomLobby()}
+                  >
+                    <Text style={styles.gameOverBtnText}>NOUVELLE PARTIE</Text>
+                  </TouchableOpacity>
+                )}
+                {!isHostOrLocal && (
+                  <Text style={styles.gameOverWaitText}>En attente de l'hôte...</Text>
+                )}
+                <TouchableOpacity 
+                  style={[styles.gameOverBtn, styles.gameOverBtnSecondary]}
+                  onPress={() => useGameStore.getState().resetToLobby()}
+                >
+                  <Text style={styles.gameOverBtnTextSecondary}>QUITTER</Text>
+                </TouchableOpacity>
+              </View>
             </View>
           )}
         </View>
@@ -436,6 +456,44 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontFamily: 'Inter_400Regular',
     marginTop: 6,
+  },
+  gameOverActions: {
+    marginTop: 24,
+    width: '100%',
+    alignItems: 'center',
+    gap: 12,
+  },
+  gameOverBtn: {
+    backgroundColor: COLORS.madaGreen,
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    borderRadius: 12,
+    width: '100%',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.2)',
+  },
+  gameOverBtnSecondary: {
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    borderColor: 'rgba(255,255,255,0.1)',
+  },
+  gameOverBtnText: {
+    color: '#FFF',
+    fontFamily: 'Inter_900Black',
+    fontSize: 14,
+    letterSpacing: 1,
+  },
+  gameOverBtnTextSecondary: {
+    color: COLORS.textSecondary,
+    fontFamily: 'Inter_700Bold',
+    fontSize: 13,
+    letterSpacing: 1,
+  },
+  gameOverWaitText: {
+    color: COLORS.gold,
+    fontFamily: 'Inter_400Regular',
+    fontSize: 13,
+    marginBottom: 8,
   },
 
   // ─── TIMER STYLES ───

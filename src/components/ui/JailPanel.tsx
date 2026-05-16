@@ -93,40 +93,54 @@ export const JailPanel = () => {
         <View style={[styles.progressFill, { width: `${(jailTurn / 3) * 100}%` }]} />
       </View>
 
-      {/* Action buttons — scrollable if screen is too small */}
-      <ScrollView
-        style={styles.actionsScroll}
-        contentContainerStyle={styles.actionsContent}
-        showsVerticalScrollIndicator={false}
-        keyboardShouldPersistTaps="handled"
-      >
-        {actions.map((a) => (
+      {/* Action buttons */}
+      <View style={styles.actionsContainer}>
+        {/* Main action: Roll Dice */}
+        <TouchableOpacity
+          style={[styles.actionButton, styles.rollButton]}
+          onPress={rollForJailBreak}
+          activeOpacity={0.75}
+        >
+          <Text style={styles.actionIcon}>🎲</Text>
+          <View style={styles.actionTextGroup}>
+            <Text style={styles.actionLabel}>Tenter un double</Text>
+            <Text style={styles.actionDetail}>{jailTurn === 3 ? 'Dernière chance !' : 'Double = évasion gratuite'}</Text>
+          </View>
+        </TouchableOpacity>
+
+        {/* Secondary actions row */}
+        <View style={styles.rowActions}>
           <TouchableOpacity
-            key={a.key}
-            style={[
-              styles.actionButton,
-              a.style,
-              a.disabled && styles.disabledButton,
-            ]}
-            onPress={a.onPress}
-            disabled={a.disabled}
+            style={[styles.actionButton, styles.secondaryButton, styles.payButton, !canPayBail && styles.disabledButton]}
+            onPress={payBail}
+            disabled={!canPayBail}
             activeOpacity={0.75}
           >
-            <Text style={styles.actionIcon}>{a.icon}</Text>
+            <Text style={styles.actionIconSecondary}>💰</Text>
             <View style={styles.actionTextGroup}>
-              <Text style={styles.actionLabel}>{a.label}</Text>
-              <Text
-                style={[
-                  styles.actionDetail,
-                  a.disabled && styles.disabledText,
-                ]}
-              >
-                {a.detail}
+              <Text style={styles.actionLabelSecondary}>Payer caution</Text>
+              <Text style={[styles.actionDetail, !canPayBail && styles.disabledText]}>
+                {canPayBail ? '50 AR' : 'Pas assez (50 AR)'}
               </Text>
             </View>
           </TouchableOpacity>
-        ))}
-      </ScrollView>
+
+          <TouchableOpacity
+            style={[styles.actionButton, styles.secondaryButton, styles.cardButton, !hasCard && styles.disabledButton]}
+            onPress={useJailCard}
+            disabled={!hasCard}
+            activeOpacity={0.75}
+          >
+            <Text style={styles.actionIconSecondary}>🃏</Text>
+            <View style={styles.actionTextGroup}>
+              <Text style={styles.actionLabelSecondary}>Utiliser carte</Text>
+              <Text style={[styles.actionDetail, !hasCard && styles.disabledText]}>
+                {hasCard ? 'Sortir de prison' : 'Aucune carte'}
+              </Text>
+            </View>
+          </TouchableOpacity>
+        </View>
+      </View>
     </View>
   );
 };
@@ -189,21 +203,30 @@ const styles = StyleSheet.create({
   },
 
   // ── Actions ──
-  actionsScroll: {
-    flex: 1,
+  actionsContainer: {
+    gap: 8,
+    width: '100%',
   },
-  actionsContent: {
-    gap: 6,
-    paddingBottom: 4,
+  rowActions: {
+    flexDirection: 'row',
+    gap: 8,
+    width: '100%',
   },
   actionButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 10,
+    paddingVertical: 12,
     paddingHorizontal: 12,
     borderRadius: BORDER_RADIUS.md,
     borderWidth: 1,
     minHeight: 52,
+    width: '100%',
+  },
+  secondaryButton: {
+    flex: 1,
+    paddingHorizontal: 8,
+    paddingVertical: 10,
+    minHeight: 48,
   },
   payButton: {
     backgroundColor: 'rgba(31, 178, 90, 0.12)',
@@ -221,9 +244,15 @@ const styles = StyleSheet.create({
     opacity: 0.3,
   },
   actionIcon: {
-    fontSize: 20,
-    marginRight: 10,
-    width: 28,
+    fontSize: 24,
+    marginRight: 12,
+    width: 32,
+    textAlign: 'center',
+  },
+  actionIconSecondary: {
+    fontSize: 18,
+    marginRight: 6,
+    width: 24,
     textAlign: 'center',
   },
   actionTextGroup: {
@@ -232,14 +261,19 @@ const styles = StyleSheet.create({
   },
   actionLabel: {
     color: COLORS.white,
-    fontSize: 13,
+    fontSize: 15,
+    fontFamily: 'Inter_700Bold',
+  },
+  actionLabelSecondary: {
+    color: COLORS.white,
+    fontSize: 11,
     fontFamily: 'Inter_700Bold',
   },
   actionDetail: {
     color: 'rgba(255,255,255,0.45)',
     fontSize: 10,
     fontFamily: 'Inter_400Regular',
-    marginTop: 1,
+    marginTop: 2,
   },
   disabledText: {
     color: 'rgba(255,255,255,0.25)',

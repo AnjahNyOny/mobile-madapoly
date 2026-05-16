@@ -21,6 +21,7 @@ export interface ConnectedClient {
   playerId: string;
   name?: string;
   avatar?: string;
+  isReady?: boolean;
 }
 
 // ─── Event types for UI notifications ───
@@ -69,6 +70,7 @@ interface GameActions {
   syncState: (newState: Partial<GameStoreState>) => void;
   setAppScreen: (screen: 'lobby' | 'game') => void;
   resetToLobby: () => void;
+  returnToRoomLobby: () => void;
   setConnectedClients: (clients: ConnectedClient[] | ((prev: ConnectedClient[]) => ConnectedClient[])) => void;
   startHostGraceTimer: () => void;
   cancelHostGraceTimer: () => void;
@@ -329,6 +331,27 @@ export const useGameStore = create<GameStoreState & GameActions>((setOriginal, g
     });
     // Cancel any pending host grace timer
     if (hostGraceTimer) { clearTimeout(hostGraceTimer); hostGraceTimer = null; }
+  },
+
+  returnToRoomLobby: () => {
+    const { networkRole, connectedClients } = get();
+    if (networkRole === 'client' || networkRole === 'spectator') return;
+
+    const newClients = connectedClients.map(c => ({ ...c, isReady: false }));
+
+    set({
+      appScreen: 'lobby',
+      connectedClients: newClients,
+      turnPhase: 'WAITING_FOR_DICE',
+      players: [],
+      board: {},
+      gameLog: [],
+      lastEvent: null
+    });
+
+    if (networkRole === 'host') {
+      NetworkManager.broadcast({ type: 'RETURN_TO_LOBBY' });
+    }
   },
 
   startHostGraceTimer: () => {

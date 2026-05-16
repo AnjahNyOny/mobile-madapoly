@@ -194,26 +194,26 @@ Transformer le jeu local actuel géré par Zustand en une architecture Client-Se
 ## 🎨 Phase 8 : UX & Polish
 
 ### 8.1 Lobby amélioré
-- [ ] Champ de saisie du **nom du joueur** avant de rejoindre/héberger.
+- [ x] Champ de saisie du **nom du joueur** avant de rejoindre/héberger.
 - [ ] Afficher les noms réels dans la liste des joueurs connectés.
-- [ ] Choix de la **couleur/avatar** du pion.
-- [ ] Indicateur "Prêt ✓" par joueur (l'hôte ne peut lancer que si tous sont prêts).
+- [x ] Choix de la **couleur/avatar** du pion.
+- [x] Indicateur "Prêt ✓" par joueur (l'hôte ne peut lancer que si tous sont prêts).
 
 ### 8.2 Tableau de propriétés
 - [ ] Panneau latéral (swipe) ou modal listant toutes les propriétés avec leur statut (libre, achetée, hypothéquée, nb maisons).
-- [ ] Couleur de groupe visible sur chaque carte propriété.
-- [ ] Vue détaillée par propriété (loyers par niveau, hypothèque).
+- [x ] Couleur de groupe visible sur chaque carte propriété.
+- [ x] Vue détaillée par propriété (loyers par niveau, hypothèque).
 
 ### 8.3 Animations & Sons
-- [ ] Animation de lancer de dés (rotation 3D des dés avant résultat).
-- [ ] Son de roulement de dés, achat, loyer, prison.
-- [ ] Confettis / particules sur VICTOIRE.
-- [ ] Animation de flip de carte (Magie-Magie / Ankamantatra).
+- [ x] Animation de lancer de dés (rotation 3D des dés avant résultat).
+- [ x] Son de roulement de dés, achat, loyer, prison.
+- [ x] Confettis / particules sur VICTOIRE.
+- [x ] Animation de flip de carte (Magie-Magie / Ankamantatra).
 
 ### 8.4 Assets visuels
-- [ ] Remplacer les placeholders texte des cases par de vraies icônes SVG thématiques.
-- [ ] Illustrations des propriétés (miniatures de Nosy Be, Tsingy, etc.).
-- [ ] Pions customisés (zébu, baobab, pirogue, chapeau lamba...).
+- [ x] Remplacer les placeholders texte des cases par de vraies icônes SVG thématiques.
+- [x ] Illustrations des propriétés (miniatures de Nosy Be, Tsingy, etc.).
+- [ x] Pions customisés (zébu, baobab, pirogue, chapeau lamba...).
 
 ---
 
@@ -225,9 +225,9 @@ Transformer le jeu local actuel géré par Zustand en une architecture Client-Se
 - [x] Saisie dans l'UI du lobby (pseudo + emojis/icônes).
 
 ### 9.2 Reconnexion après déconnexion
-- [ ] Stocker l'état de partie côté hôte avec `localPlayerId`.
-- [ ] Si un client se reconnecte avec le même `localPlayerId`, lui re-syncer l'état complet.
-- [ ] Timeout de 60s avant de considérer le joueur abandonné (bot prend le relais).
+- [ x] Stocker l'état de partie côté hôte avec `localPlayerId`.
+- [ x] Si un client se reconnecte avec le même `localPlayerId`, lui re-syncer l'état complet.
+- [ x] Timeout de 60s avant de considérer le joueur abandonné (bot prend le relais).
 
 ### 9.3 Hypothèques ✅
 - [x] Ajouter `isMortgaged: boolean` à `PropertyState`.
@@ -451,8 +451,8 @@ relay-server/  (Node.js, déployé sur Railway/Render)
   - Root directory : `relay-server/`, Start command : `node server.js`
   - URL publique : `wss://mobile-madapoly.onrender.com`
   - `RELAY_URL` mis à jour dans `config.ts`.
-- [ ] Tester avec deux téléphones sur des réseaux différents (4G vs Wi-Fi).
-- [ ] Documenter le `RELAY_URL` de production dans `CONTEXT.md`.
+- [x] Tester avec deux téléphones sur des réseaux différents (4G vs Wi-Fi).
+- [x] Documenter le `RELAY_URL` de production dans `CONTEXT.md`.
 
 ---
 
@@ -501,14 +501,14 @@ relay-server/  (Node.js, déployé sur Railway/Render)
 - [x] `startServer()` et `connectToServer()` rejettent explicitement sur web
 - [x] Mode WebSocket natif au navigateur — `createRoom()` / `joinRoom()` inchangés
 - [x] `LobbyScreen` : section LAN masquée sur web (`Platform.OS !== 'web'`)
-- [ ] Tester une partie en ligne entre mobile et navigateur (même room code)
+- [x] Tester une partie en ligne entre mobile et navigateur (même room code)
 
 ### 12.5 UI & Responsive Web
 - [x] Créer `web/index.html` : viewport, meta OG, theme-color, favicon
 - [x] CSS : app shell centré `max-width: 480px` sur desktop, fond dégradé latéral
 - [x] `GameScreen` : `SCREEN_WIDTH` borné à 480px sur web pour centrer la caméra correctement
 - [x] `LobbyScreen` : `content` à 85% de largeur — naturellement responsive
-- [ ] Tester sur Chrome, Safari, Firefox
+- [x] Tester sur Chrome, Safari, Firefox
 
 ### 12.6 Déploiement sur game.madapoly.com
 - [x] `npx expo export --platform web` → dossier `dist/` généré proprement
@@ -522,28 +522,29 @@ relay-server/  (Node.js, déployé sur Railway/Render)
 ## Phase 13 — Mode Spectateur & Liste des parties en cours
 
 ### 13.1 Relay — Endpoint HTTP `/rooms`
-- [ ] Ajouter `express` ou `http` server inline dans `relay-server/server.js`
-- [ ] `GET /rooms` → retourne `[{ roomCode, playerCount, createdAt }]` (rooms avec ≥1 joueur actif)
-- [ ] CORS activé pour `game.madapoly.com`
+- [x] Ajouter `express` ou `http` server inline dans `relay-server/server.js`
+- [x] `GET /rooms` → retourne `[{ roomCode, playerCount, createdAt }]` (rooms avec ≥1 joueur actif)
+- [x] CORS activé pour `game.madapoly.com`
 
 ### 13.2 Relay — Support du protocole spectateur
-- [ ] Nouveau message `{ type: 'JOIN_SPECTATOR', roomCode }` → `{ type: 'SPECTATOR_OK', roomCode, state }`
-- [ ] Le relay forward tous les `STATE_UPDATE` aux spectateurs de la room
-- [ ] Les spectateurs n'envoient rien (guard côté relay)
-- [ ] `ROOM_DISSOLVED` / `GAME_OVER` → spectateurs déconnectés proprement
+- [x] Nouveau message `{ type: 'JOIN_SPECTATOR', roomCode }` → `{ type: 'SPECTATOR_OK', roomCode, state }`
+- [x] Le relay forward tous les `STATE_UPDATE` aux spectateurs de la room
+- [x] Les spectateurs n'envoient rien (guard côté relay)
+- [x] `ROOM_DISSOLVED` / `GAME_OVER` → spectateurs déconnectés proprement
 
 ### 13.3 NetworkManager — Mode spectateur
-- [ ] Nouvelle méthode `watchRoom(roomCode): Promise<void>`
-- [ ] `wsLocalSocketId` marqué `spectator-*` pour distinguer des joueurs
-- [ ] `onMessage` reçoit les `STATE_UPDATE` normalement
+- [x] Nouvelle méthode `watchRoom(roomCode): Promise<void>`
+- [x] `wsLocalSocketId` marqué `spectator-*` pour distinguer des joueurs
+- [x] `onMessage` reçoit les `STATE_UPDATE` normalement
 
 ### 13.4 LobbyScreen — Liste des parties en cours
-- [ ] Section "Parties en cours" : `GET <RELAY_URL_HTTP>/rooms` au montage et sur pull-to-refresh
-- [ ] Afficher chaque room : code + nb joueurs + bouton "Regarder"
-- [ ] Bouton "Regarder" → `watchRoom(roomCode)` → `appScreen === 'game'` en mode spectateur
+- [x] Section "Parties en cours" : `GET <RELAY_URL_HTTP>/rooms` au montage et sur pull-to-refresh
+- [x] Afficher chaque room : code + nb joueurs + bouton "Regarder"
+- [x] Bouton "Regarder" → `watchRoom(roomCode)` → `appScreen === 'game'` en mode spectateur
 
 ### 13.5 GameScreen / Store — Mode spectateur
-- [ ] `networkRole: 'spectator'` dans le store
-- [ ] `useBotLogic` : guard `if (networkRole === 'spectator') return`
-- [ ] HUD : masquer les boutons d'action (lancer dés, acheter, etc.) si spectateur
-- [ ] Banner discret "Mode spectateur" affiché en overlay
+- [x] `networkRole: 'spectator'` dans le store
+- [x] `useBotLogic` : guard `if (networkRole === 'spectator') return`
+- [x] HUD : masquer les boutons d'action (lancer dés, acheter, etc.) si spectateur
+- [x] Banner discret "Mode spectateur" affiché en overlay
+

@@ -39,11 +39,21 @@ export interface GameState {
   consecutiveDoubles: number;
   lastDiceRoll: [number, number] | null;
   actionDeadline: number | null; // Pour le timer (timeout automatique)
-  gameLog: string[];
+  gameLog: GameLogEntry[];
   turnCount: number;
   chanceDeck: number[];
   communityChestDeck: number[];
   activeTradeOffer: TradeOffer | null;
+}
+
+export interface GameLogEntry {
+  emoji: string;
+  message: string;
+  type: 'dice' | 'move' | 'purchase' | 'rent' | 'tax' | 'jail' | 'card' | 'trade' | 'build' | 'mortgage' | 'bankrupt' | 'victory' | 'info' | 'turn' | 'go-bonus';
+  turn: number;
+  timestamp: number;
+  playerName?: string;
+  amount?: number;
 }
 
 export interface TradeOffer {

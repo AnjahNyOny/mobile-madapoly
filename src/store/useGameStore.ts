@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { GameState, Player, TurnPhase, TradeOffer } from '../types';
+import { GameState, Player, TurnPhase, TradeOffer, GameLogEntry } from '../types';
 import { STATIC_BOARD, COLOR_GROUPS } from '../constants';
 import { calculateRent, hasMonopoly } from '../utils/rentCalculator';
 import { shuffleArray } from '../utils/mathHelpers';
@@ -150,11 +150,32 @@ export const useGameStore = create<GameStoreState & GameActions>((setOriginal, g
       const event = partial.lastEvent;
       // If an event is provided and is different from the last one
       if (event && event !== get().lastEvent) {
-        const logMsg = `[Tour ${get().turnCount}] ${event.emoji} ${event.message}`;
-        partial.gameLog = [logMsg, ...get().gameLog].slice(0, 50); // Keep last 50 logs
+        const entry: GameLogEntry = {
+          emoji: event.emoji,
+          message: event.message,
+          type: event.type || 'info',
+          turn: get().turnCount,
+          timestamp: Date.now(),
+          playerName: get().players[get().currentPlayerIndex]?.name,
+        };
+        partial.gameLog = [entry, ...get().gameLog].slice(0, 100); // Keep last 100 logs
       }
     }
     setOriginal(partial, replace as any);
+  };
+
+  // Helper to add a log entry without triggering a lastEvent
+  const addLog = (emoji: string, message: string, type: GameLogEntry['type'], extra?: Partial<GameLogEntry>) => {
+    const entry: GameLogEntry = {
+      emoji,
+      message,
+      type,
+      turn: get().turnCount,
+      timestamp: Date.now(),
+      playerName: get().players[get().currentPlayerIndex]?.name,
+      ...extra,
+    };
+    setOriginal({ gameLog: [entry, ...get().gameLog].slice(0, 100) });
   };
 
   return {
@@ -397,7 +418,7 @@ export const useGameStore = create<GameStoreState & GameActions>((setOriginal, g
       currentPlayerIndex: 0, 
       lastEvent: null, 
       board: {},
-      gameLog: ['La partie commence !'],
+      gameLog: [{ emoji: '🎬', message: 'La partie commence !', type: 'info', turn: 1, timestamp: Date.now() }],
       turnCount: 1,
       chanceDeck: initialChance,
       communityChestDeck: initialCommunity,
@@ -467,6 +488,9 @@ export const useGameStore = create<GameStoreState & GameActions>((setOriginal, g
       turnPhase: 'ANIMATING_MOVEMENT',
       lastEvent: event,
     });
+    // Log the dice roll
+    const doubleText = isDouble ? ' (DOUBLE !)' : '';
+    addLog('🎲', `${player.name} lance ${die1} + ${die2} = ${die1 + die2}${doubleText}`, 'dice', { playerName: player.name });
     // Clear timeout when player acts
     get().clearTurnTimeout();
     // Only broadcast for manual rolls (auto rolls are already broadcasted by handleTimeout)
@@ -497,6 +521,9 @@ export const useGameStore = create<GameStoreState & GameActions>((setOriginal, g
         broadcastIfHost(get);
         return;
     }
+
+    // Log the landing
+    addLog('📍', `${player.name} arrive sur ${space.name}`, 'move', { playerName: player.name });
 
     switch (space.type) {
       case 'property':
@@ -1049,6 +1076,7 @@ export const useGameStore = create<GameStoreState & GameActions>((setOriginal, g
         currentPlayerIndex: nextIndex,
         turnPhase: 'IN_JAIL_DECISION',
         actionDeadline: null,
+        turnCount: get().turnCount + 1,
         lastEvent: { type: 'jail', message: `${nextPlayer.name} est en prison (Tour ${nextPlayer.jailTurns + 1}/3)`, emoji: '⛓️' },
       });
     } else {
@@ -1056,8 +1084,10 @@ export const useGameStore = create<GameStoreState & GameActions>((setOriginal, g
         currentPlayerIndex: nextIndex, 
         turnPhase: 'WAITING_FOR_DICE', 
         actionDeadline: null,
+        turnCount: get().turnCount + 1,
         lastEvent: null,
       });
+      addLog('🔄', `C'est au tour de ${nextPlayer.name}`, 'turn', { playerName: nextPlayer.name });
     }
     // Start timeout for next player's turn
     get().startTurnTimeout();

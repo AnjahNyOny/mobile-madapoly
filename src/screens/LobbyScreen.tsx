@@ -751,23 +751,13 @@ export const LobbyScreen = () => {
       {mode === 'select' && (
         <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
 
-          {/* ── HEADER : Logo lemur + flag ── */}
+          {/* ── HEADER : Logo ── */}
           <View style={styles.logoBlock}>
-            <View style={styles.logoStack}>
-              <Image
-                source={require('../../assets/images/flag-for-madagascar-svgrepo-com.png')}
-                style={styles.logoFlag}
-              />
-              <Image
-                source={require('../../assets/images/lemur-madagascar-svgrepo-com.png')}
-                style={styles.logoLemurImg}
-              />
-            </View>
-            <View style={styles.titleRow}>
-              <Text style={styles.titleMada}>MADA</Text>
-              <Text style={styles.titlePoly}>POLY</Text>
-            </View>
-            <Text style={styles.subtitle}>Édition Ariary Luxe</Text>
+            <Image
+              source={require('../../assets/images/logo-lemur.webp')}
+              style={styles.logoImage}
+              resizeMode="contain"
+            />
           </View>
 
           {connectionError ? <Text style={styles.errorText}>{connectionError}</Text> : null}
@@ -1136,14 +1126,10 @@ const styles = StyleSheet.create({
 
   // ── Logo Header ──
   logoBlock: { alignItems: 'center', paddingTop: 40, paddingBottom: 20 },
-  logoStack: { width: 110, height: 110, alignItems: 'center', justifyContent: 'center', marginBottom: 8 },
-  logoFlag: { position: 'absolute', width: 110, height: 110, resizeMode: 'contain', opacity: 0.35 },
-  logoLemurImg: { width: 90, height: 90, resizeMode: 'contain' },
-  titleRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 0 },
+  logoImage: { width: 200, height: 120, resizeMode: 'contain' },
   titleRowSmall: { flexDirection: 'row', alignItems: 'flex-end', marginBottom: 20 },
   titleMada: { fontSize: 42, fontFamily: 'Inter_900Black', color: COLORS.madaWhite, letterSpacing: 2 },
   titlePoly: { fontSize: 42, fontFamily: 'Inter_900Black', color: COLORS.madaRed, letterSpacing: 2 },
-  subtitle: { fontSize: 12, fontFamily: 'Inter_700Bold', color: COLORS.madaGreen, letterSpacing: 3, marginTop: 3, textTransform: 'uppercase' },
 
   // ── Section ──
   section: { width: '100%', marginBottom: 16 },

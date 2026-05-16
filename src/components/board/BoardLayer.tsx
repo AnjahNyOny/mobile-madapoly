@@ -16,7 +16,7 @@ export const BoardLayer = () => {
       {/* Center area — custom central board image */}
       <View style={styles.centerArea}>
         <Image
-          source={require('../../../assets/images/special-icons/central-board.webp')}
+          source={require('../../../assets/images/central-board-mada.webp')}
           style={styles.centerImage}
           resizeMode="contain"
         />

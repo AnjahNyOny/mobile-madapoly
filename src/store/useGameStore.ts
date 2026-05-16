@@ -38,7 +38,7 @@ interface GameActions {
   endAnimation: () => void;
   resolveSpace: () => void;
   buyProperty: () => void;
-  skipPurchase: () => void;
+  skipPurchase: (isManual?: boolean) => void;
   buildHouse: (propertyId: string) => void;
   sellHouse: (propertyId: string) => void;
   mortgageProperty: (propertyId: string) => void;
@@ -51,7 +51,7 @@ interface GameActions {
   // ── Jail Actions ──
   payBail: () => void;
   useJailCard: () => void;
-  rollForJailBreak: () => void;
+  rollForJailBreak: (isManual?: boolean) => void;
   
   // ── Gameplay ──
   forfeit: () => void;
@@ -794,7 +794,7 @@ export const useGameStore = create<GameStoreState & GameActions>((setOriginal, g
     broadcastIfHost(get);
   },
 
-  skipPurchase: () => {
+  skipPurchase: (isManual = true) => {
     const { turnPhase, players, currentPlayerIndex, networkRole } = get();
     if (turnPhase !== 'WAITING_FOR_DECISION') return;
 
@@ -803,12 +803,14 @@ export const useGameStore = create<GameStoreState & GameActions>((setOriginal, g
       return;
     }
 
-    // Reset consecutive timeouts when player acts manually
     const newPlayers = [...players];
-    newPlayers[currentPlayerIndex] = {
-      ...newPlayers[currentPlayerIndex],
-      consecutiveTimeouts: 0
-    };
+    // Only reset consecutive timeouts when player acts manually
+    if (isManual) {
+      newPlayers[currentPlayerIndex] = {
+        ...newPlayers[currentPlayerIndex],
+        consecutiveTimeouts: 0
+      };
+    }
 
     const player = newPlayers[currentPlayerIndex];
     const space = STATIC_BOARD[player.position];
@@ -1172,7 +1174,7 @@ export const useGameStore = create<GameStoreState & GameActions>((setOriginal, g
    * Pas de double = reste en prison, jailTurns++.
    * 3e tentative échouée = sortie forcée avec 50 AR.
    */
-  rollForJailBreak: () => {
+  rollForJailBreak: (isManual = true) => {
     const { turnPhase, players, currentPlayerIndex, networkRole } = get();
     if (turnPhase !== 'IN_JAIL_DECISION') return;
 
@@ -1480,10 +1482,10 @@ export const useGameStore = create<GameStoreState & GameActions>((setOriginal, g
     // Broadcast the updated state with new consecutiveTimeouts
     broadcastIfHost(get);
     
-    // Execute the timeout action
+    // Execute the timeout action (pass isManual=false so consecutiveTimeouts is NOT reset)
     if (turnPhase === 'WAITING_FOR_DICE') get().rollDice(false); // Auto roll, don't reset timeouts
-    else if (turnPhase === 'WAITING_FOR_DECISION') get().skipPurchase();
-    else if (turnPhase === 'IN_JAIL_DECISION') get().rollForJailBreak();
+    else if (turnPhase === 'WAITING_FOR_DECISION') get().skipPurchase(false);
+    else if (turnPhase === 'IN_JAIL_DECISION') get().rollForJailBreak(false);
   },
 
   startTurnTimeout: () => {

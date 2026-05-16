@@ -70,7 +70,7 @@ export const PropertyModal = () => {
             // IMPORTANT: Defer skipPurchase to avoid "Cannot update a component 
             // while rendering a different component". Calling a Zustand action 
             // inside a setState updater causes cascading renders.
-            setTimeout(() => skipPurchase(), 0);
+            setTimeout(() => skipPurchase(true), 0);
             return 0;
           }
           return prev - 1;
@@ -185,7 +185,7 @@ export const PropertyModal = () => {
 
             <TouchableOpacity
               style={styles.skipButton}
-              onPress={skipPurchase}
+              onPress={() => skipPurchase()}
               activeOpacity={0.85}
             >
               <Text style={styles.skipButtonText}>PASSER</Text>

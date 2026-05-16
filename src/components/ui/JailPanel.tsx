@@ -98,7 +98,7 @@ export const JailPanel = () => {
         {/* Main action: Roll Dice */}
         <TouchableOpacity
           style={[styles.actionButton, styles.rollButton]}
-          onPress={rollForJailBreak}
+          onPress={() => rollForJailBreak()}
           activeOpacity={0.75}
         >
           <Text style={styles.actionIcon}>🎲</Text>

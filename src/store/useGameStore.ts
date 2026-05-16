@@ -534,9 +534,9 @@ export const useGameStore = create<GameStoreState & GameActions>((setOriginal, g
         if (!propertyRecord || !propertyRecord.ownerId) {
             const price = space.price || 0;
             if (player.balance >= price) {
-                // Small delay so player sees the token land before modal appears
                 setTimeout(() => {
                   set({ turnPhase: 'WAITING_FOR_DECISION', actionDeadline: Date.now() + 15000 });
+                  get().startTurnTimeout();
                   broadcastIfHost(get);
                 }, 600);
                 return; // broadcastIfHost called inside setTimeout
@@ -1129,6 +1129,7 @@ export const useGameStore = create<GameStoreState & GameActions>((setOriginal, g
     player.balance -= 50;
     player.inJail = false;
     player.jailTurns = 0;
+    player.consecutiveTimeouts = 0;
     newPlayers[currentPlayerIndex] = player;
 
     set({
@@ -1159,6 +1160,7 @@ export const useGameStore = create<GameStoreState & GameActions>((setOriginal, g
     player.hasGetOutOfJailCard = false;
     player.inJail = false;
     player.jailTurns = 0;
+    player.consecutiveTimeouts = 0;
     newPlayers[currentPlayerIndex] = player;
 
     set({

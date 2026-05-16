@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect } from 'react';
 import { StyleSheet, View, Text, TouchableOpacity, Dimensions } from 'react-native';
 import Animated, {
   useSharedValue,
@@ -37,6 +37,7 @@ export const PropertyModal = () => {
   const localPlayerId = useGameStore((s) => s.localPlayerId);
   const networkRole = useGameStore((s) => s.networkRole);
   const connectedClients = useGameStore((s) => s.connectedClients);
+  const turnTimeRemaining = useGameStore((s) => s.turnTimeRemaining);
 
   const currentPlayer = players[currentPlayerIndex];
   // Host/local controls all non-bot players; client only controls their own assigned player
@@ -52,46 +53,14 @@ export const PropertyModal = () => {
   // ── Animation shared values ──
   const slideProgress = useSharedValue(0); // 0 = hidden, 1 = visible
   
-  // ── Timer state ──
-  const [timeLeft, setTimeLeft] = useState(TIMER_SECONDS);
-  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-
   useEffect(() => {
     if (shouldShow) {
       // Animate modal in
       slideProgress.value = withSpring(1, { damping: 18, stiffness: 140, mass: 0.8 });
-
-      // Start countdown timer
-      setTimeLeft(TIMER_SECONDS);
-      timerRef.current = setInterval(() => {
-        setTimeLeft((prev) => {
-          if (prev <= 1) {
-            clearInterval(timerRef.current!);
-            // IMPORTANT: Defer skipPurchase to avoid "Cannot update a component 
-            // while rendering a different component". Calling a Zustand action 
-            // inside a setState updater causes cascading renders.
-            setTimeout(() => skipPurchase(true), 0);
-            return 0;
-          }
-          return prev - 1;
-        });
-      }, 1000);
     } else {
       // Animate modal out
       slideProgress.value = withTiming(0, { duration: 200, easing: Easing.in(Easing.ease) });
-
-      if (timerRef.current) {
-        clearInterval(timerRef.current);
-        timerRef.current = null;
-      }
     }
-
-    return () => {
-      if (timerRef.current) {
-        clearInterval(timerRef.current);
-        timerRef.current = null;
-      }
-    };
   }, [shouldShow]);
 
   // ── Animated styles ──
@@ -111,6 +80,7 @@ export const PropertyModal = () => {
   if (!space) return null;
 
   const typeInfo = TYPE_LABELS[space.type] || { icon: '🏠', label: 'Propriété' };
+  const timeLeft = turnTimeRemaining !== null ? Math.ceil(turnTimeRemaining / 1000) : TIMER_SECONDS;
   const timerPercent = (timeLeft / TIMER_SECONDS) * 100;
   const timerColor = timeLeft <= 5 ? '#E10214' : timeLeft <= 10 ? '#EB8A13' : '#1FB25A';
   const balanceAfter = (currentPlayer?.balance || 0) - (space.price || 0);

@@ -937,20 +937,24 @@ export const LobbyScreen = () => {
                 <Text style={styles.hintText}>Aucune partie en cours</Text>
               ) : liveRooms.map(room => (
                 <View key={room.roomCode} style={styles.liveRow}>
-                  <View style={{ flex: 1, gap: 2 }}>
-                    {room.roomName ? <Text style={styles.liveRoomName}>{room.roomName}</Text> : null}
-                    <Text style={styles.liveCode}>{room.roomCode}</Text>
-                    <View style={{ flexDirection: 'row', gap: 6, alignItems: 'center', marginTop: 2 }}>
-                      <View style={[styles.badge, room.status === 'lobby' ? styles.badgeLobby : styles.badgePlaying]}>
-                        <Text style={styles.badgeText}>{room.status === 'lobby' ? 'Lobby' : 'En cours'}</Text>
+                  <View style={styles.liveRowTop}>
+                    <View style={{ flex: 1 }}>
+                      {room.roomName ? <Text style={styles.liveRoomName}>{room.roomName}</Text> : null}
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 4 }}>
+                        <Text style={styles.liveCode}>{room.roomCode}</Text>
+                        <Text style={styles.liveMeta}>•</Text>
+                        <Text style={styles.liveMeta}>{`${room.playerCount} joueur${room.playerCount > 1 ? 's' : ''}`}</Text>
                       </View>
-                      <Text style={styles.liveMeta}>{`${room.playerCount} joueur${room.playerCount > 1 ? 's' : ''}`}</Text>
+                    </View>
+                    <View style={[styles.badge, room.status === 'lobby' ? styles.badgeLobby : styles.badgePlaying]}>
+                      <Text style={styles.badgeText}>{room.status === 'lobby' ? 'Lobby' : 'En cours'}</Text>
                     </View>
                   </View>
-                  <View style={{ gap: 6, alignItems: 'flex-end' }}>
+
+                  <View style={styles.liveRowActions}>
                     {savedSession?.roomCode === room.roomCode && (
                       <TouchableOpacity style={[styles.joinBtn, { backgroundColor: COLORS.madaGreen }]} disabled={isConnecting} onPress={() => savedSession!.localPlayerId === 'host' ? handleHostRejoin(savedSession!) : handleRejoin(savedSession!)}>
-                        <Text style={styles.joinBtnText}>{'▶ Reprendre'}</Text>
+                        <Text style={styles.joinBtnText}>▶ Reprendre</Text>
                       </TouchableOpacity>
                     )}
                     {room.status === 'lobby' && savedSession?.roomCode !== room.roomCode && (
@@ -971,14 +975,15 @@ export const LobbyScreen = () => {
                           NetworkManager.setTransport('tcp');
                         } finally { setIsConnecting(false); }
                       }}>
-                        <Text style={styles.joinBtnText}>{'Rejoindre'}</Text>
+                        <Text style={styles.joinBtnText}>Rejoindre</Text>
                       </TouchableOpacity>
                     )}
                     <TouchableOpacity style={styles.watchBtn} onPress={() => handleWatch(room.roomCode)} disabled={isConnecting}>
-                      <Text style={styles.watchBtnText}>{'👁 Regarder'}</Text>
+                      <Text style={styles.watchBtnText}>👁 Regarder</Text>
                     </TouchableOpacity>
-                    <TouchableOpacity style={[styles.watchBtn, { borderColor: COLORS.danger }]} onPress={() => handleDeleteRoomFromList(room.roomCode)} disabled={isConnecting}>
-                      <Text style={[styles.watchBtnText, { color: COLORS.danger }]}>{'🗑 Supprimer'}</Text>
+                    <View style={{ flex: 1 }} />
+                    <TouchableOpacity style={styles.deleteBtn} onPress={() => handleDeleteRoomFromList(room.roomCode)} disabled={isConnecting}>
+                      <Text style={styles.deleteBtnText}>✕</Text>
                     </TouchableOpacity>
                   </View>
                 </View>
@@ -1264,22 +1269,26 @@ const styles = StyleSheet.create({
   refreshBtn: { padding: 6 },
   refreshBtnText: { color: COLORS.primary, fontSize: 22, fontFamily: 'Inter_700Bold' },
   liveRow: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    backgroundColor: COLORS.surface, borderRadius: 12,
-    paddingHorizontal: 14, paddingVertical: 12, marginBottom: 8,
-    borderWidth: 1, borderColor: COLORS.surfaceBorder,
+    backgroundColor: 'rgba(255,255,255,0.02)', borderRadius: 16,
+    padding: 16, marginBottom: 12,
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)',
   },
-  liveRoomName: { color: COLORS.text, fontFamily: 'Inter_700Bold', fontSize: 14 },
-  liveCode: { color: COLORS.textSecondary, fontFamily: 'Inter_700Bold', fontSize: 13, letterSpacing: 1 },
-  liveMeta: { color: COLORS.textMuted, fontFamily: 'Inter_400Regular', fontSize: 11 },
-  badge: { borderRadius: 6, paddingHorizontal: 7, paddingVertical: 2 },
-  badgeLobby: { backgroundColor: 'rgba(34,197,94,0.2)' },
-  badgePlaying: { backgroundColor: 'rgba(239,68,68,0.2)' },
-  badgeText: { color: COLORS.text, fontFamily: 'Inter_400Regular', fontSize: 10 },
-  joinBtn: { backgroundColor: COLORS.success, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 6 },
-  joinBtnText: { color: '#FFF', fontFamily: 'Inter_700Bold', fontSize: 12 },
-  watchBtn: { backgroundColor: COLORS.surfaceAlt, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 6, borderWidth: 1, borderColor: COLORS.surfaceBorder },
-  watchBtnText: { color: COLORS.textSecondary, fontFamily: 'Inter_700Bold', fontSize: 12 },
+  liveRowTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 },
+  liveRoomName: { color: '#FFF', fontFamily: 'Inter_900Black', fontSize: 16, letterSpacing: 0.5 },
+  liveCode: { color: COLORS.madaGreen, fontFamily: 'Inter_700Bold', fontSize: 13, letterSpacing: 1 },
+  liveMeta: { color: COLORS.textMuted, fontFamily: 'Inter_600SemiBold', fontSize: 12 },
+  badge: { borderRadius: 8, paddingHorizontal: 8, paddingVertical: 4, alignSelf: 'flex-start' },
+  badgeLobby: { backgroundColor: 'rgba(34,197,94,0.15)', borderWidth: 1, borderColor: 'rgba(34,197,94,0.3)' },
+  badgePlaying: { backgroundColor: 'rgba(239,68,68,0.15)', borderWidth: 1, borderColor: 'rgba(239,68,68,0.3)' },
+  badgeText: { color: '#FFF', fontFamily: 'Inter_700Bold', fontSize: 10, textTransform: 'uppercase' },
+  
+  liveRowActions: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  joinBtn: { backgroundColor: COLORS.madaGreen, borderRadius: 10, paddingHorizontal: 16, paddingVertical: 10, shadowColor: COLORS.madaGreen, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.3, shadowRadius: 4, elevation: 3 },
+  joinBtnText: { color: '#FFF', fontFamily: 'Inter_900Black', fontSize: 13, letterSpacing: 1 },
+  watchBtn: { backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: 10, paddingHorizontal: 16, paddingVertical: 10, borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)' },
+  watchBtnText: { color: COLORS.textSecondary, fontFamily: 'Inter_700Bold', fontSize: 13 },
+  deleteBtn: { backgroundColor: 'rgba(239,68,68,0.1)', borderRadius: 10, width: 36, height: 36, justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: 'rgba(239,68,68,0.3)' },
+  deleteBtnText: { color: COLORS.danger, fontFamily: 'Inter_900Black', fontSize: 14 },
 
   // ── Inner game pages (host/client/waiting) ──
   pageTitle: { fontSize: 22, fontFamily: 'Inter_900Black', color: COLORS.text, marginBottom: 20 },

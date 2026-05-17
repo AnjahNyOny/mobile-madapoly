@@ -764,8 +764,33 @@ export const LobbyScreen = () => {
     );
   };
 
+  const handleBackPress = () => {
+    if (mode === 'host') {
+      NetworkManager.closeServer();
+      setMode('select');
+    } else if (mode === 'client') {
+      NetworkManager.disconnect();
+      setMode('select');
+    } else if (mode === 'online_host') {
+      NetworkManager.cleanup();
+      setConnectedClients([]);
+      setRoomCode('');
+      setMode('select');
+    } else if (mode === 'online_client') {
+      clearSession();
+      setSavedSession(null);
+      NetworkManager.cleanup();
+      setMode('select');
+    }
+  };
+
   return (
     <SafeAreaView style={styles.container}>
+      {mode !== 'select' && (
+        <TouchableOpacity style={styles.backBtn} onPress={handleBackPress} activeOpacity={0.7}>
+          <Text style={styles.backBtnText}>←</Text>
+        </TouchableOpacity>
+      )}
 
       {/* ════════════════════════ SELECT ════════════════════════ */}
       {mode === 'select' && (
@@ -1022,9 +1047,6 @@ export const LobbyScreen = () => {
                 {connectedClients.length === 0 ? 'LANCER AVEC BOTS' : connectedClients.every(c => c.isReady) ? 'LANCER' : 'ATTENTE DES JOUEURS'}
               </Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.cancelLink} onPress={() => { NetworkManager.closeServer(); setMode('select'); }}>
-              <Text style={styles.cancelText}>Annuler</Text>
-            </TouchableOpacity>
           </View>
         </ScrollView>
       )}
@@ -1057,10 +1079,6 @@ export const LobbyScreen = () => {
                 <Text style={styles.waitText}>En attente de l'hôte…</Text>
               </>
             )}
-
-            <TouchableOpacity style={styles.cancelLink} onPress={() => { NetworkManager.disconnect(); setMode('select'); }}>
-              <Text style={styles.cancelText}>Quitter</Text>
-            </TouchableOpacity>
           </View>
         </ScrollView>
       )}
@@ -1126,11 +1144,8 @@ export const LobbyScreen = () => {
                 {connectedClients.length === 0 ? 'LANCER AVEC BOTS' : connectedClients.every(c => c.isReady) ? 'LANCER' : 'ATTENTE DES JOUEURS'}
               </Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.cancelLink} onPress={() => { NetworkManager.cleanup(); setConnectedClients([]); setRoomCode(''); setMode('select'); }}>
-              <Text style={styles.cancelText}>Annuler</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={[styles.cancelLink, { marginTop: 8 }]} onPress={handleDeleteRoom}>
-              <Text style={[styles.cancelText, { color: COLORS.danger }]}>Supprimer la room</Text>
+            <TouchableOpacity style={styles.deleteRoomBtn} onPress={handleDeleteRoom}>
+              <Text style={styles.deleteRoomBtnText}>SUPPRIMER LA ROOM</Text>
             </TouchableOpacity>
           </View>
         </ScrollView>
@@ -1164,10 +1179,6 @@ export const LobbyScreen = () => {
                 <Text style={styles.waitText}>En attente de l'hôte…</Text>
               </>
             )}
-
-            <TouchableOpacity style={styles.cancelLink} onPress={() => { clearSession(); setSavedSession(null); NetworkManager.cleanup(); setMode('select'); }}>
-              <Text style={styles.cancelText}>Quitter</Text>
-            </TouchableOpacity>
           </View>
         </ScrollView>
       )}
@@ -1345,8 +1356,42 @@ const styles = StyleSheet.create({
   waitText: { color: COLORS.textSecondary, fontFamily: 'Inter_400Regular', fontSize: 15, textAlign: 'center', marginBottom: 8 },
   hintText: { color: COLORS.textMuted, fontFamily: 'Inter_400Regular', fontSize: 12, textAlign: 'center', marginBottom: 8 },
   errorText: { color: COLORS.danger, fontFamily: 'Inter_700Bold', fontSize: 14, textAlign: 'center', paddingHorizontal: 20, marginBottom: 10 },
-  cancelLink: { marginTop: 16, padding: 8 },
-  cancelText: { color: COLORS.textMuted, fontFamily: 'Inter_400Regular', fontSize: 14, textDecorationLine: 'underline' },
+  backBtn: {
+    position: 'absolute',
+    top: Platform.OS === 'ios' ? 44 : 20,
+    left: 20,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
+    zIndex: 100,
+  },
+  backBtnText: {
+    color: '#FFF',
+    fontSize: 22,
+    fontFamily: 'Inter_700Bold',
+    marginTop: Platform.OS === 'ios' ? -2 : 0,
+  },
+  deleteRoomBtn: {
+    width: '100%',
+    paddingVertical: 14,
+    borderRadius: 14,
+    backgroundColor: 'rgba(239,68,68,0.1)',
+    borderWidth: 1,
+    borderColor: 'rgba(239,68,68,0.3)',
+    alignItems: 'center',
+    marginTop: 16,
+  },
+  deleteRoomBtnText: {
+    color: COLORS.danger,
+    fontFamily: 'Inter_900Black',
+    fontSize: 13,
+    letterSpacing: 1.5,
+  },
 
   // ── Legacy (used in startSolo / stepper stubs) ──
   stepper: { flexDirection: 'row', alignItems: 'center', gap: 20, marginBottom: 6 },

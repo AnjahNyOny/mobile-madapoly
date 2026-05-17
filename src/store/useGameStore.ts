@@ -315,10 +315,12 @@ export const useGameStore = create<GameStoreState & GameActions>((setOriginal, g
 
   resetToLobby: () => {
     const { networkRole, localPlayerId, appScreen } = get();
-    console.log(`[resetToLobby] START role=${networkRole} appScreen=${appScreen} localPlayerId=${localPlayerId}`);
-    // If we are a client quitting mid-game, notify the host before closing the socket
+    const { turnPhase } = get();
     if (networkRole === 'client' && appScreen === 'game' && localPlayerId) {
-      NetworkManager.sendMessage({ type: 'REQUEST_FORFEIT', payload: { playerId: localPlayerId } });
+      // Only forfeit if the game is still active (not GAME_OVER)
+      if (turnPhase !== 'GAME_OVER') {
+        NetworkManager.sendMessage({ type: 'REQUEST_FORFEIT', payload: { playerId: localPlayerId } });
+      }
       // Small delay to let the message flush before the socket is torn down
       setTimeout(() => NetworkManager.cleanup(), 120);
     } else if (networkRole === 'host') {
@@ -329,11 +331,9 @@ export const useGameStore = create<GameStoreState & GameActions>((setOriginal, g
       NetworkManager.cleanup();
     }
     // Clear saved session so auto-rejoin does not trigger
-    console.log('[resetToLobby] clearing session...');
     clearSession();
     clearGameState();
     get().clearTurnTimeout();
-    console.log('[resetToLobby] calling set() to go to lobby...');
     set({
       // Reset game state
       players: [],

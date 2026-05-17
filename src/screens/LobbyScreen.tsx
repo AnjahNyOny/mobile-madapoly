@@ -4,7 +4,7 @@ import { COLORS, SPACING, BORDER_RADIUS } from '../styles/theme';
 import { NetworkManager } from '../network/NetworkManager';
 import { useGameStore, ConnectedClient } from '../store/useGameStore';
 import { RELAY_URL, RELAY_HTTP_URL } from '../constants/config';
-import { saveSession, loadSession, clearSession, loadGameState, clearGameState } from '../utils/sessionStorage';
+import { saveSession, loadSession, clearSession, loadGameState, clearGameState, saveHostSecret, getHostSecret, removeHostSecret } from '../utils/sessionStorage';
 import { getRandomBotNames } from '../utils/botNames';
 import LogoLemur from '../../assets/images/logo-lemur.svg';
 
@@ -531,7 +531,10 @@ export const LobbyScreen = () => {
       setRoomCode(code);
       setMode('online_host');
       // Persist host session for page-refresh recovery
+      const hostSecret = NetworkManager.getHostSecret();
       saveSession({ roomCode: code, localPlayerId: 'host', playerName: localPlayerName, playerAvatar: localPlayerAvatar });
+      // Save secret separately so it survives session clears (for room deletion from list)
+      if (hostSecret) saveHostSecret(code, hostSecret);
     } catch (e) {
       setConnectionError('Impossible de créer la room. Vérifiez votre connexion.');
       NetworkManager.setTransport('tcp');
@@ -554,11 +557,18 @@ export const LobbyScreen = () => {
   };
 
   const handleDeleteRoomFromList = async (targetRoomCode: string) => {
+    // Only allow deletion if we have the host secret for this room
+    const secret = getHostSecret(targetRoomCode);
+    if (!secret) {
+      console.warn('[Lobby] No host secret — cannot delete room');
+      return;
+    }
     try {
-      await fetch(`${RELAY_HTTP_URL}/rooms/${targetRoomCode}`, { method: 'DELETE' });
+      await fetch(`${RELAY_HTTP_URL}/rooms/${targetRoomCode}?secret=${encodeURIComponent(secret)}`, { method: 'DELETE' });
     } catch (e) {
       console.warn('[Lobby] Failed to delete room via HTTP:', e);
     }
+    removeHostSecret(targetRoomCode);
     NetworkManager.cleanup();
     clearSession();
     clearGameState();
@@ -1032,9 +1042,11 @@ export const LobbyScreen = () => {
                       <Text style={styles.watchBtnText}>👁 Regarder</Text>
                     </TouchableOpacity>
                     <View style={{ flex: 1 }} />
-                    <TouchableOpacity style={styles.deleteBtn} onPress={() => handleDeleteRoomFromList(room.roomCode)} disabled={isConnecting}>
-                      <Text style={styles.deleteBtnText}>✕</Text>
-                    </TouchableOpacity>
+                    {getHostSecret(room.roomCode) && (
+                      <TouchableOpacity style={styles.deleteBtn} onPress={() => handleDeleteRoomFromList(room.roomCode)} disabled={isConnecting}>
+                        <Text style={styles.deleteBtnText}>✕</Text>
+                      </TouchableOpacity>
+                    )}
                   </View>
                 </View>
               ))}

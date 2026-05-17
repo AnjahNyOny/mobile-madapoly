@@ -51,6 +51,7 @@ const hostBuffers: Map<string, string> = new Map();
 let wsSocket: WebSocket | null = null;                          // Client OR host relay socket
 let wsRoomCode: string | null = null;                          // Room code (host creates, client joins)
 let wsLocalSocketId: string | null = null;                     // Our relay-assigned socket ID
+let wsHostSecret: string | null = null;                        // Secret for authenticated room deletion
 // WS connected clients (host only): relaySocketId → assigned game playerId
 const wsConnectedClients: Map<string, { socketId: string; playerId?: string }> = new Map();
 
@@ -90,6 +91,10 @@ export const NetworkManager = {
 
   getRoomCode(): string | null {
     return wsRoomCode;
+  },
+
+  getHostSecret(): string | null {
+    return wsHostSecret;
   },
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -370,7 +375,8 @@ export const NetworkManager = {
           clearTimeout(timeout);
           wsRoomCode = packet.payload?.roomCode ?? (packet as any).roomCode;
           wsLocalSocketId = packet.payload?.socketId ?? (packet as any).socketId;
-          console.log(`[Host/WS] Room created: ${wsRoomCode}`);
+          wsHostSecret = (packet as any).hostSecret ?? null;
+          console.log(`[Host/WS] Room created: ${wsRoomCode}, hasSecret: ${!!wsHostSecret}`);
           resolve(wsRoomCode!);
           wsSocket!.onmessage = NetworkManager._wsHostMessageHandler;
           return;
@@ -685,6 +691,7 @@ export const NetworkManager = {
     }
     wsRoomCode = null;
     wsLocalSocketId = null;
+    wsHostSecret = null;
     wsConnectedClients.clear();
     clientLastPingTimestamp.clear();
   },

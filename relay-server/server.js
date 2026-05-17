@@ -46,6 +46,8 @@ const socketMeta = new Map();
 const roomTimers = new Map();
 // hostGoneTimers: Map<roomCode, NodeJS.Timeout>  — 60s dissolve if host gone
 const hostGoneTimers = new Map();
+// roomSecrets: Map<roomCode, string>  — host secret for authenticated deletion
+const roomSecrets = new Map();
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -106,6 +108,7 @@ function dissolveRoom(roomCode, reason) {
   roomStatus.delete(roomCode);
   pendingJoinRequests.delete(roomCode);
   roomPlayerIds.delete(roomCode);
+  roomSecrets.delete(roomCode);
   const t1 = roomTimers.get(roomCode);
   if (t1) { clearTimeout(t1); roomTimers.delete(roomCode); }
   const t2 = hostGoneTimers.get(roomCode);
@@ -308,15 +311,21 @@ const httpServer = http.createServer((req, res) => {
     return;
   }
 
-  // DELETE /rooms/:roomCode — delete a room by code
+  // DELETE /rooms/:roomCode?secret=xxx — delete a room by code (requires host secret)
   if (req.method === 'DELETE' && req.url.startsWith('/rooms/')) {
-    const roomCode = req.url.split('/rooms/')[1];
+    const urlParts = req.url.split('/rooms/')[1].split('?');
+    const roomCode = urlParts[0];
+    const params = new URLSearchParams(urlParts[1] || '');
+    const secret = params.get('secret');
     res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
-    if (roomCode && rooms.has(roomCode)) {
+    if (!roomCode || !rooms.has(roomCode)) {
+      res.end(JSON.stringify({ success: false, error: 'Room not found' }));
+    } else if (!secret || roomSecrets.get(roomCode) !== secret) {
+      console.warn(`[Relay] Unauthorized DELETE for room ${roomCode}`);
+      res.end(JSON.stringify({ success: false, error: 'Unauthorized' }));
+    } else {
       deleteRoom(roomCode, 'http_delete');
       res.end(JSON.stringify({ success: true, roomCode }));
-    } else {
-      res.end(JSON.stringify({ success: false, error: 'Room not found' }));
     }
     return;
   }
@@ -427,8 +436,11 @@ wss.on('connection', (ws) => {
       if (timer) { clearTimeout(timer); roomTimers.delete(roomCode); }
 
       roomHosts.set(roomCode, ws);
+      // Generate a secret token for authenticated room deletion
+      const hostSecret = Math.random().toString(36).substr(2, 16);
+      roomSecrets.set(roomCode, hostSecret);
       console.log(`[Relay] Room ${roomCode} "${roomName || '(unnamed)'}" created by ${meta.socketId}`);
-      send(ws, { type: 'ROOM_CREATED', roomCode, roomName, socketId: meta.socketId });
+      send(ws, { type: 'ROOM_CREATED', roomCode, roomName, socketId: meta.socketId, hostSecret });
       return;
     }
 

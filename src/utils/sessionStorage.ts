@@ -74,3 +74,42 @@ export function clearGameState() {
   if (!store) return;
   store.removeItem(GAME_STATE_KEY);
 }
+
+// ─── Host secrets: persist roomCode → secret across session clears ───
+const HOST_SECRETS_KEY = 'madapoly_host_secrets';
+
+export function saveHostSecret(roomCode: string, secret: string) {
+  const store = storage();
+  if (!store) return;
+  try {
+    const raw = store.getItem(HOST_SECRETS_KEY);
+    const secrets: Record<string, string> = raw ? JSON.parse(raw) : {};
+    secrets[roomCode] = secret;
+    store.setItem(HOST_SECRETS_KEY, JSON.stringify(secrets));
+  } catch {}
+}
+
+export function getHostSecret(roomCode: string): string | null {
+  const store = storage();
+  if (!store) return null;
+  try {
+    const raw = store.getItem(HOST_SECRETS_KEY);
+    if (!raw) return null;
+    const secrets: Record<string, string> = JSON.parse(raw);
+    return secrets[roomCode] || null;
+  } catch {
+    return null;
+  }
+}
+
+export function removeHostSecret(roomCode: string) {
+  const store = storage();
+  if (!store) return;
+  try {
+    const raw = store.getItem(HOST_SECRETS_KEY);
+    if (!raw) return;
+    const secrets: Record<string, string> = JSON.parse(raw);
+    delete secrets[roomCode];
+    store.setItem(HOST_SECRETS_KEY, JSON.stringify(secrets));
+  } catch {}
+}

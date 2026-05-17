@@ -29,7 +29,6 @@ export const SettingsButton = () => {
   const controlledPlayerId = isHostOrLocal ? currentPlayer?.id : localPlayerId;
   const localPlayer = players.find(p => p.id === controlledPlayerId);
 
-  if (turnPhase === 'GAME_OVER') return null;
   if (localPlayer?.isBankrupt) return null;
 
   const toggleMusic = () => {

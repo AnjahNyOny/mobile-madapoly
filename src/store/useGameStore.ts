@@ -5,7 +5,7 @@ import { calculateRent, hasMonopoly } from '../utils/rentCalculator';
 import { shuffleArray } from '../utils/mathHelpers';
 import { CHANCE_CARDS, COMMUNITY_CHEST_CARDS, GameCard } from '../constants/cards';
 import { NetworkManager } from '../network/NetworkManager';
-import { saveGameState } from '../utils/sessionStorage';
+import { saveGameState, clearSession, clearGameState } from '../utils/sessionStorage';
 
 // ─── Turn timeout system ───
 let turnTimeoutTimer: any = null;
@@ -115,10 +115,12 @@ interface GameStoreState extends GameState {
   chronoEndTime: number | null;
   turnTimeRemaining: number | null;
 
-  // UI Modal states (local only, not broadcasted)
+  // UI Modal states (local only, not not broadcasted)
   selectedPlayerIdForProps: string | null;
   selectedSpaceIdForDetail: string | null;
   isGameLogOpen: boolean;
+  // Track intentional quit to prevent auto-rejoin
+  intentionalQuit: boolean;
 }
 
 // Helper to broadcast state if host
@@ -210,6 +212,7 @@ export const useGameStore = create<GameStoreState & GameActions>((setOriginal, g
     selectedPlayerIdForProps: null,
     selectedSpaceIdForDetail: null,
     isGameLogOpen: false,
+    intentionalQuit: false,
 
   // --- ACTIONS ---
   setAppScreen: (screen) => set({ appScreen: screen }),
@@ -312,14 +315,25 @@ export const useGameStore = create<GameStoreState & GameActions>((setOriginal, g
 
   resetToLobby: () => {
     const { networkRole, localPlayerId, appScreen } = get();
+    console.log(`[resetToLobby] START role=${networkRole} appScreen=${appScreen} localPlayerId=${localPlayerId}`);
     // If we are a client quitting mid-game, notify the host before closing the socket
     if (networkRole === 'client' && appScreen === 'game' && localPlayerId) {
       NetworkManager.sendMessage({ type: 'REQUEST_FORFEIT', payload: { playerId: localPlayerId } });
       // Small delay to let the message flush before the socket is torn down
       setTimeout(() => NetworkManager.cleanup(), 120);
+    } else if (networkRole === 'host') {
+      // Tell all clients to return to lobby before host disconnects
+      NetworkManager.broadcast({ type: 'RETURN_TO_LOBBY' });
+      setTimeout(() => NetworkManager.cleanup(), 120);
     } else {
       NetworkManager.cleanup();
     }
+    // Clear saved session so auto-rejoin does not trigger
+    console.log('[resetToLobby] clearing session...');
+    clearSession();
+    clearGameState();
+    get().clearTurnTimeout();
+    console.log('[resetToLobby] calling set() to go to lobby...');
     set({
       // Reset game state
       players: [],
@@ -350,6 +364,7 @@ export const useGameStore = create<GameStoreState & GameActions>((setOriginal, g
       localPlayerAvatar: 'lemur-madagascar',
       appScreen: 'lobby',
       connectedClients: [],
+      intentionalQuit: true,
     });
     // Cancel any pending host grace timer
     if (hostGraceTimer) { clearTimeout(hostGraceTimer); hostGraceTimer = null; }
@@ -368,7 +383,8 @@ export const useGameStore = create<GameStoreState & GameActions>((setOriginal, g
       players: [],
       board: {},
       gameLog: [],
-      lastEvent: null
+      lastEvent: null,
+      intentionalQuit: false, // Reset - this is not an intentional quit
     });
 
     if (networkRole === 'host') {
@@ -428,6 +444,8 @@ export const useGameStore = create<GameStoreState & GameActions>((setOriginal, g
       selectedSpaceIdForDetail: null,
       isGameLogOpen: false
     });
+    // Start timeout for the first turn
+    get().startTurnTimeout();
     broadcastIfHost(get);
   },
 
@@ -500,7 +518,11 @@ export const useGameStore = create<GameStoreState & GameActions>((setOriginal, g
 
   endAnimation: () => {
     const { networkRole } = get();
-    if (networkRole === 'client') return; // Seul l'hôte/local gère la fin d'animation pour avancer l'état
+    if (networkRole === 'client') {
+      // Client: advance phase locally to unblock UI (host will send correct state soon)
+      set({ turnPhase: 'RESOLVING_SPACE' });
+      return;
+    }
     
     set({ turnPhase: 'RESOLVING_SPACE' });
     broadcastIfHost(get);
@@ -1350,7 +1372,7 @@ export const useGameStore = create<GameStoreState & GameActions>((setOriginal, g
   // forfeit — Abandon volontaire (forfait)
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   forfeit: () => {
-    const { networkRole, localPlayerId } = get();
+    const { networkRole, localPlayerId, players } = get();
 
     if (networkRole === 'client') {
       NetworkManager.sendMessage({ type: 'REQUEST_FORFEIT', payload: { playerId: localPlayerId } });
@@ -1359,7 +1381,10 @@ export const useGameStore = create<GameStoreState & GameActions>((setOriginal, g
 
     // Host or local: bankrupt the local player
     if (localPlayerId) {
-      get().handleBankruptcy(localPlayerId, null);
+      const found = players.find(p => p.id === localPlayerId);
+      if (found && !found.isBankrupt) {
+        get().handleBankruptcy(localPlayerId, null);
+      }
     }
   },
 
@@ -1400,6 +1425,7 @@ export const useGameStore = create<GameStoreState & GameActions>((setOriginal, g
     if (activePlayers.length <= 1 || activeHumans.length === 0) {
       // ── VICTOIRE OU FIN DE PARTIE ──
       // Un seul joueur reste, ou plus aucun joueur humain
+      get().clearTurnTimeout();
       const winner = activePlayers.length === 1 ? activePlayers[0] : null;
       set({
         players: newPlayers,
@@ -1449,6 +1475,7 @@ export const useGameStore = create<GameStoreState & GameActions>((setOriginal, g
   handleTimeout: () => {
     const { turnPhase, networkRole, currentPlayerIndex, players } = get();
     if (networkRole === 'client') return; // Host handles timeouts
+    if (turnPhase === 'GAME_OVER') return;
     
     const currentPlayer = players[currentPlayerIndex];
     if (!currentPlayer || currentPlayer.isBot) return;

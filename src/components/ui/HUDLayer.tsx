@@ -177,7 +177,11 @@ export const HUDLayer = () => {
                 {isHostOrLocal && (
                   <TouchableOpacity 
                     style={styles.gameOverBtn}
-                    onPress={() => useGameStore.getState().returnToRoomLobby()}
+                    activeOpacity={0.7}
+                    onPress={() => {
+                      // Delay to let touch event finish before state change
+                      setTimeout(() => useGameStore.getState().returnToRoomLobby(), 50);
+                    }}
                   >
                     <Text style={styles.gameOverBtnText}>NOUVELLE PARTIE</Text>
                   </TouchableOpacity>
@@ -187,7 +191,11 @@ export const HUDLayer = () => {
                 )}
                 <TouchableOpacity 
                   style={[styles.gameOverBtn, styles.gameOverBtnSecondary]}
-                  onPress={() => useGameStore.getState().resetToLobby()}
+                  activeOpacity={0.7}
+                  onPress={() => {
+                    // Delay to let touch event finish before state change
+                    setTimeout(() => useGameStore.getState().resetToLobby(), 50);
+                  }}
                 >
                   <Text style={styles.gameOverBtnTextSecondary}>QUITTER</Text>
                 </TouchableOpacity>

@@ -154,6 +154,17 @@ export const LobbyScreen = () => {
     const session = loadSession();
     if (!session) return;
     setSavedSession(session);
+
+    // Check if host intentionally quit - if so, don't auto-rejoin and clear session
+    const state = useGameStore.getState();
+    if (session.localPlayerId === 'host' && state.intentionalQuit) {
+      // Host quit intentionally - clear session so they don't auto-rejoin
+      clearSession();
+      setSavedSession(null);
+      useGameStore.setState({ intentionalQuit: false });
+      return;
+    }
+
     if (session.localPlayerId === 'host') {
       // Host refresh: silently try to reclaim the room
       handleHostRejoin(session);
@@ -197,13 +208,19 @@ export const LobbyScreen = () => {
     if (appScreen === 'lobby') {
       const state = useGameStore.getState();
       if (!state.localPlayerId) {
-        // Full reset (quit room)
+        // Full reset (quit room) - clear session so Reprendre doesn't show old room
+        clearSession();
+        setSavedSession(null);
         setMode('select');
         setConnectedClients([]);
         setRoomCode('');
         setClientInputRoomCode('');
         setConnectionError('');
         setIsConnecting(false);
+        // Also reset intentionalQuit flag if it was set
+        if (state.intentionalQuit) {
+          useGameStore.setState({ intentionalQuit: false });
+        }
       }
       // Always reset ready state on returning to lobby
       setIsLocalReady(false);
@@ -471,6 +488,10 @@ export const LobbyScreen = () => {
       if (session.gameStarted) {
         const savedState = loadGameState();
         if (savedState) {
+          // If saved during animation, skip to a safe phase — animation can't replay after reconnect
+          if (savedState.turnPhase === 'ANIMATING_MOVEMENT') {
+            savedState.turnPhase = 'RESOLVING_SPACE';
+          }
           useGameStore.getState().syncState(savedState);
           // Restore connectedClients so host knows which players are remote
           if (savedState._connectedClients) {
@@ -479,6 +500,10 @@ export const LobbyScreen = () => {
           // Broadcast state to clients so they know host is back and dismiss disconnect modal
           const { _connectedClients, savedAt, ...payload } = savedState;
           NetworkManager.broadcast({ type: 'STATE_UPDATE', payload });
+          // If we just skipped animation, resolve the space now
+          if (savedState.turnPhase === 'RESOLVING_SPACE') {
+            setTimeout(() => useGameStore.getState().resolveSpace(), 100);
+          }
         }
         setAppScreen('game');
       } else {

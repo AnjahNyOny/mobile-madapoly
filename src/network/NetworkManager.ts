@@ -696,6 +696,11 @@ export const NetworkManager = {
   _startHostHeartbeat() {
     NetworkManager._stopHostHeartbeat();
 
+    // Send immediate PING so clients know host is alive right away
+    if (activeTransport === 'websocket') {
+      NetworkManager._wsBroadcast({ type: '__PING__' });
+    }
+
     hostHeartbeatInterval = setInterval(() => {
       const now = Date.now();
 
@@ -853,6 +858,16 @@ export const NetworkManager = {
       let attempt = 1;
 
       const tryConnect = () => {
+        // Recreate WebSocket if it was closed/null (happens on retry)
+        if (!wsSocket || wsSocket.readyState === WebSocket.CLOSED || wsSocket.readyState === WebSocket.CLOSING) {
+          try {
+            wsSocket = new WebSocket(url);
+          } catch (e) {
+            reject(new Error('WebSocket not available'));
+            return;
+          }
+        }
+
         const timeout = setTimeout(() => {
           if (didResolve) return;
           wsSocket?.close();
@@ -865,12 +880,12 @@ export const NetworkManager = {
           }
         }, CONNECT_TIMEOUT_MS);
 
-        wsSocket!.onopen = () => {
+        wsSocket.onopen = () => {
           clearTimeout(timeout);
-          wsSocket!.send(JSON.stringify({ type: 'REJOIN_ROOM', roomCode, localPlayerId, playerName, playerAvatar }));
+          wsSocket?.send(JSON.stringify({ type: 'REJOIN_ROOM', roomCode, localPlayerId, playerName, playerAvatar }));
         };
 
-        wsSocket!.onmessage = (event) => {
+        wsSocket.onmessage = (event) => {
           let packet: NetworkPacket;
           try { packet = JSON.parse(event.data as string); } catch { return; }
 
@@ -879,7 +894,7 @@ export const NetworkManager = {
             wsRoomCode = (packet as any).roomCode;
             wsLocalSocketId = (packet as any).socketId;
             resolve();
-            wsSocket!.onmessage = NetworkManager._wsClientMessageHandler;
+            wsSocket && (wsSocket.onmessage = NetworkManager._wsClientMessageHandler);
             return;
           }
 
@@ -890,7 +905,7 @@ export const NetworkManager = {
           }
         };
 
-        wsSocket!.onerror = () => {
+        wsSocket.onerror = () => {
           if (didResolve) return;
           clearTimeout(timeout);
           if (attempt < MAX_ATTEMPTS) {
@@ -901,7 +916,7 @@ export const NetworkManager = {
           }
         };
 
-        wsSocket!.onclose = () => {
+        wsSocket.onclose = () => {
           if (!didResolve && onDisconnectCallback) onDisconnectCallback('host');
         };
       };

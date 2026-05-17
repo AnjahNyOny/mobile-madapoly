@@ -52,11 +52,19 @@ export const GameScreen = () => {
 
   // ── Network message handler for all game messages ──
   useEffect(() => {
+    // Track if client just reconnected — next STATE_UPDATE with ANIMATING_MOVEMENT should be skipped
+    let justReconnected = false;
+
     const handleMessage = (packet: any, clientId?: string) => {
       // Dismiss disconnect modal when host is back or sends any state update
       if (packet.type === 'HOST_REJOINED' || packet.type === 'STATE_UPDATE' || packet.type === 'GAME_START') {
         useGameStore.getState().cancelHostGraceTimer();
         useGameStore.getState().setNetworkStatus('connected');
+      }
+
+      // Mark reconnect so we can handle stale ANIMATING_MOVEMENT
+      if (packet.type === 'HOST_REJOINED') {
+        justReconnected = true;
       }
 
       if (packet.type === 'TIMER_UPDATE') {
@@ -76,11 +84,20 @@ export const GameScreen = () => {
         if (packet.type === 'REQUEST_SELL_HOUSE') useGameStore.getState().sellHouse(packet.payload.propertyId);
         if (packet.type === 'REQUEST_MORTGAGE') useGameStore.getState().mortgageProperty(packet.payload.propertyId);
         if (packet.type === 'REQUEST_UNMORTGAGE') useGameStore.getState().unmortgageProperty(packet.payload.propertyId);
+        if (packet.type === 'REQUEST_FORFEIT' && packet.payload?.playerId) {
+          useGameStore.getState().handleBankruptcy(packet.payload.playerId, null);
+        }
       }
       
       // Also handle other important messages that might be needed during gameplay
       if (packet.type === 'STATE_UPDATE') {
-        useGameStore.getState().syncState(packet.payload);
+        const payload = packet.payload;
+        // Only skip ANIMATING_MOVEMENT right after reconnect — during normal play let it through
+        if (payload.turnPhase === 'ANIMATING_MOVEMENT' && justReconnected && useGameStore.getState().networkRole === 'client') {
+          payload.turnPhase = 'RESOLVING_SPACE';
+        }
+        justReconnected = false;
+        useGameStore.getState().syncState(payload);
       }
       
       if (packet.type === 'GAME_START') {
@@ -88,7 +105,7 @@ export const GameScreen = () => {
       }
 
       if (packet.type === 'RETURN_TO_LOBBY') {
-        useGameStore.getState().setAppScreen('lobby');
+        useGameStore.getState().resetToLobby();
       }
     };
 

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { StyleSheet, View, Text, TouchableOpacity, TextInput, SafeAreaView, ActivityIndicator, Clipboard, ScrollView, Platform, Animated, Easing, Image } from 'react-native';
+import { StyleSheet, View, Text, TouchableOpacity, TextInput, SafeAreaView, ActivityIndicator, Clipboard, ScrollView, Platform, Animated, Easing, Image, LayoutAnimation } from 'react-native';
 import { COLORS, SPACING, BORDER_RADIUS } from '../styles/theme';
 import { NetworkManager } from '../network/NetworkManager';
 import { useGameStore, ConnectedClient } from '../store/useGameStore';
@@ -71,6 +71,11 @@ export const LobbyScreen = () => {
   const [mode, setMode] = useState<LobbyMode>('select');
   const [tokenExpanded, setTokenExpanded] = useState(false);
   const [expandedMode, setExpandedMode] = useState<'solo' | 'lan' | 'online' | null>('solo');
+
+  const toggleMode = (mode: 'solo' | 'lan' | 'online') => {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    setExpandedMode(expandedMode === mode ? null : mode);
+  };
   const [hostIp, setHostIp] = useState<string>('');
   const [clientInputIp, setClientInputIp] = useState<string>('');
   // connectedClients lives in Zustand so it persists when LobbyScreen unmounts during game
@@ -780,50 +785,35 @@ export const LobbyScreen = () => {
             {/* ── IDENTITÉ ── */}
             <View style={styles.section}>
               <Text style={styles.sectionLabel}>VOTRE IDENTITÉ</Text>
-              <TextInput
-                style={styles.nameInput}
-                value={localPlayerName}
-                onChangeText={(t) => setLocalPlayerInfo(t, localPlayerAvatar)}
-                placeholder="Votre pseudo"
-                placeholderTextColor={COLORS.textMuted}
-                maxLength={12}
-              />
+              <View style={styles.inputContainer}>
+                <TextInput
+                  style={styles.nameInput}
+                  value={localPlayerName}
+                  onChangeText={(t) => setLocalPlayerInfo(t, localPlayerAvatar)}
+                  placeholder="Votre pseudo"
+                  placeholderTextColor={COLORS.textMuted}
+                  maxLength={12}
+                />
+              </View>
+              
               <Text style={styles.sectionLabel}>PION</Text>
-
-              {/* 5 pions visibles + bouton +/- */}
-              <View style={styles.tokenQuickRow}>
-                {TOKENS.slice(0, 5).map(tok => (
+              <ScrollView 
+                horizontal 
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.tokenScrollContainer}
+              >
+                {TOKENS.map(tok => (
                   <TouchableOpacity
                     key={tok.id}
-                    style={[styles.tokenQuickBtn, localPlayerAvatar === tok.id && styles.tokenQuickBtnActive]}
+                    style={[styles.tokenBtn, localPlayerAvatar === tok.id && styles.tokenBtnActive]}
                     onPress={() => setLocalPlayerInfo(localPlayerName, tok.id)}
+                    activeOpacity={0.7}
                   >
-                    <Image source={tok.image} style={styles.tokenQuickImage} />
+                    <Image source={tok.image} style={styles.tokenImage} />
+                    <Text style={[styles.tokenLabel, localPlayerAvatar === tok.id && styles.tokenLabelActive]}>{tok.label}</Text>
                   </TouchableOpacity>
                 ))}
-                <TouchableOpacity
-                  style={styles.tokenMoreBtn}
-                  onPress={() => setTokenExpanded(v => !v)}
-                >
-                  <Text style={styles.tokenMoreText}>{tokenExpanded ? '✕' : '+'}</Text>
-                </TouchableOpacity>
-              </View>
-
-              {/* Grille complète (sans les 5 premiers) */}
-              {tokenExpanded && (
-                <View style={styles.tokenGrid}>
-                  {TOKENS.slice(5).map(tok => (
-                    <TouchableOpacity
-                      key={tok.id}
-                      style={[styles.tokenBtn, localPlayerAvatar === tok.id && styles.tokenBtnActive]}
-                      onPress={() => { setLocalPlayerInfo(localPlayerName, tok.id); setTokenExpanded(false); }}
-                    >
-                      <Image source={tok.image} style={styles.tokenImage} />
-                      <Text style={styles.tokenLabel}>{tok.label}</Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-              )}
+              </ScrollView>
             </View>
 
             {/* ── MODES ── */}
@@ -833,7 +823,7 @@ export const LobbyScreen = () => {
 
                 {/* SOLO */}
                 <View style={styles.modeCard}>
-                  <TouchableOpacity style={styles.modeCardHeader} onPress={() => setExpandedMode(expandedMode === 'solo' ? null : 'solo')} activeOpacity={0.8}>
+                  <TouchableOpacity style={styles.modeCardHeader} onPress={() => toggleMode('solo')} activeOpacity={0.8}>
                     <Text style={styles.modeIcon}>🏠</Text>
                     <View style={{ flex: 1 }}>
                       <Text style={styles.modeTitle}>Solo</Text>
@@ -855,7 +845,7 @@ export const LobbyScreen = () => {
                 {/* LAN — mobile only */}
                 {Platform.OS !== 'web' && (
                   <View style={styles.modeCard}>
-                    <TouchableOpacity style={styles.modeCardHeader} onPress={() => setExpandedMode(expandedMode === 'lan' ? null : 'lan')} activeOpacity={0.8}>
+                    <TouchableOpacity style={styles.modeCardHeader} onPress={() => toggleMode('lan')} activeOpacity={0.8}>
                       <Text style={styles.modeIcon}>📶</Text>
                       <View style={{ flex: 1 }}>
                         <Text style={styles.modeTitle}>Local Wi-Fi</Text>
@@ -889,7 +879,7 @@ export const LobbyScreen = () => {
 
                 {/* EN LIGNE */}
                 <View style={styles.modeCard}>
-                  <TouchableOpacity style={styles.modeCardHeader} onPress={() => setExpandedMode(expandedMode === 'online' ? null : 'online')} activeOpacity={0.8}>
+                  <TouchableOpacity style={styles.modeCardHeader} onPress={() => toggleMode('online')} activeOpacity={0.8}>
                     <Text style={styles.modeIcon}>🌐</Text>
                     <View style={{ flex: 1 }}>
                       <Text style={styles.modeTitle}>En Ligne</Text>
@@ -1194,63 +1184,42 @@ const styles = StyleSheet.create({
   sectionLabel: { fontSize: 10, fontFamily: 'Inter_700Bold', color: COLORS.textMuted, letterSpacing: 2, marginBottom: 8, textTransform: 'uppercase' },
 
   // ── Identity ──
+  inputContainer: { width: '100%', marginBottom: 16 },
   nameInput: {
-    width: '100%', backgroundColor: COLORS.surface,
-    borderRadius: 12, paddingHorizontal: 16, paddingVertical: 13,
+    width: '100%', backgroundColor: 'rgba(255,255,255,0.03)',
+    borderRadius: 14, paddingHorizontal: 16, paddingVertical: 14,
     fontFamily: 'Inter_700Bold', fontSize: 16, color: COLORS.text,
-    borderWidth: 1, borderColor: COLORS.surfaceBorder, marginBottom: 12,
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)',
   },
-  tokenHeaderRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 },
-  selectedTokenBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: COLORS.surface, borderRadius: 8, paddingHorizontal: 8, paddingVertical: 4, borderWidth: 1, borderColor: COLORS.madaGreen },
-  selectedTokenName: { fontSize: 11, fontFamily: 'Inter_700Bold', color: COLORS.madaGreen },
-  tokenExpandBtn: { backgroundColor: COLORS.madaGreen, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 5 },
-  tokenExpandBtnText: { fontSize: 11, fontFamily: 'Inter_700Bold', color: '#FFF' },
-  tokenGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 8 },
+  tokenScrollContainer: { gap: 12, paddingBottom: 8 },
   tokenBtn: {
-    width: 60, alignItems: 'center', paddingVertical: 7,
-    borderRadius: 10, backgroundColor: COLORS.surface,
-    borderWidth: 1.5, borderColor: COLORS.surfaceBorder,
+    width: 68, alignItems: 'center', paddingVertical: 10,
+    borderRadius: 14, backgroundColor: 'rgba(255,255,255,0.03)',
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)',
   },
-  tokenBtnActive: { borderColor: COLORS.madaGreen, backgroundColor: 'rgba(0,122,61,0.15)' },
-  tokenEmoji: { fontSize: 26 },
-  tokenImage: { width: 34, height: 34, resizeMode: 'contain' },
-  tokenLabel: { fontSize: 8, fontFamily: 'Inter_700Bold', color: COLORS.textSecondary, marginTop: 3, textAlign: 'center' },
-
-  // ── Token Quick Row (5 visible + more button) ──
-  tokenQuickRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 12 },
-  tokenQuickBtn: {
-    width: 44, height: 44, borderRadius: 12,
-    backgroundColor: COLORS.surface, borderWidth: 1.5, borderColor: COLORS.surfaceBorder,
-    justifyContent: 'center', alignItems: 'center',
+  tokenBtnActive: { 
+    borderColor: COLORS.madaGreen, 
+    backgroundColor: 'rgba(0,122,61,0.15)',
+    shadowColor: COLORS.madaGreen, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 6, elevation: 4
   },
-  tokenQuickBtnActive: { borderColor: COLORS.madaGreen, backgroundColor: 'rgba(0,122,61,0.15)' },
-  tokenQuickImage: { width: 30, height: 30, resizeMode: 'contain' },
-  tokenMoreBtn: {
-    width: 44, height: 44, borderRadius: 12,
-    backgroundColor: 'rgba(255,255,255,0.08)', borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.15)',
-    justifyContent: 'center', alignItems: 'center',
-  },
-  tokenMoreText: { fontSize: 22, fontFamily: 'Inter_700Bold', color: '#FFF' },
-  tokenCloseBtn: {
-    width: '100%', alignItems: 'center', paddingVertical: 10,
-    borderRadius: 10, backgroundColor: 'rgba(255,255,255,0.06)', marginTop: 4,
-  },
-  tokenCloseText: { fontSize: 12, fontFamily: 'Inter_600SemiBold', color: COLORS.textMuted },
+  tokenImage: { width: 38, height: 38, resizeMode: 'contain' },
+  tokenLabel: { fontSize: 9, fontFamily: 'Inter_600SemiBold', color: COLORS.textMuted, marginTop: 6, textAlign: 'center' },
+  tokenLabelActive: { color: COLORS.madaGreen, fontFamily: 'Inter_900Black' },
 
   // ── Mode Cards ──
-  modeCards: { gap: 10 },
+  modeCards: { gap: 12 },
   modeCard: {
-    backgroundColor: COLORS.surface,
-    borderRadius: 16,
-    borderWidth: 1, borderColor: COLORS.surfaceBorder,
+    backgroundColor: 'rgba(255,255,255,0.02)',
+    borderRadius: 18,
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)',
     overflow: 'hidden',
   },
-  modeCardHeader: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 16 },
-  modeBody: { paddingHorizontal: 16, paddingBottom: 16, borderTopWidth: 1, borderTopColor: COLORS.surfaceBorder },
-  modeIcon: { fontSize: 26 },
-  modeTitle: { fontSize: 17, fontFamily: 'Inter_900Black', color: COLORS.text },
-  modeDesc: { fontSize: 11, fontFamily: 'Inter_400Regular', color: COLORS.textSecondary, marginTop: 1 },
-  modeChevron: { fontSize: 12, color: COLORS.textMuted, marginLeft: 4 },
+  modeCardHeader: { flexDirection: 'row', alignItems: 'center', gap: 14, padding: 18 },
+  modeBody: { paddingHorizontal: 18, paddingBottom: 18, borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.08)' },
+  modeIcon: { fontSize: 28 },
+  modeTitle: { fontSize: 18, fontFamily: 'Inter_900Black', color: '#FFF' },
+  modeDesc: { fontSize: 12, fontFamily: 'Inter_400Regular', color: COLORS.textMuted, marginTop: 2 },
+  modeChevron: { fontSize: 12, color: COLORS.madaGreen, marginLeft: 6, fontFamily: 'Inter_900Black' },
 
   // ── Win condition block ──
   winBlock: { marginTop: 12, marginBottom: 8 },
@@ -1274,9 +1243,9 @@ const styles = StyleSheet.create({
 
   // ── Launch button ──
   launchBtn: {
-    width: '100%', paddingVertical: 13, borderRadius: 12,
+    width: '100%', paddingVertical: 14, borderRadius: 14,
     backgroundColor: COLORS.madaGreen, alignItems: 'center',
-    shadowColor: COLORS.madaGreen, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.35, shadowRadius: 8, elevation: 5,
+    shadowColor: COLORS.madaGreen, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.4, shadowRadius: 10, elevation: 6,
   },
   launchBtnSecondary: { backgroundColor: COLORS.madaRed, shadowColor: COLORS.madaRed },
   launchBtnText: { color: '#FFF', fontFamily: 'Inter_900Black', fontSize: 14, letterSpacing: 2 },

@@ -996,13 +996,14 @@ export const LobbyScreen = () => {
 
       {/* ════════════════════════ HOST (LAN) ════════════════════════ */}
       {mode === 'host' && (
-        <View style={styles.pageCenter}>
-          <View style={styles.titleRowSmall}>
-            <Text style={styles.titleMada}>MADA</Text>
-            <Text style={styles.titlePoly}>POLY</Text>
+        <ScrollView contentContainerStyle={styles.pageScrollCenter} showsVerticalScrollIndicator={false}>
+          <View style={styles.logoBlock}>
+            <LogoLemur width={90} height={90} />
+            <Text style={styles.mainTitleSmall}>MADAPOLY</Text>
+            <Text style={styles.subTitleSmall}>Ariary Luxe Edition</Text>
           </View>
           <View style={styles.content}>
-            <Text style={styles.pageTitle}>Héberger — LAN</Text>
+            <Text style={[styles.pageTitle, { marginTop: 10 }]}>Héberger — LAN</Text>
             <Text style={styles.ipText}>{hostIp || '…'}</Text>
             <Text style={styles.hintText}>Partagez cette IP avec vos amis</Text>
             <View style={styles.playerCardsList}>
@@ -1025,18 +1026,19 @@ export const LobbyScreen = () => {
               <Text style={styles.cancelText}>Annuler</Text>
             </TouchableOpacity>
           </View>
-        </View>
+        </ScrollView>
       )}
 
       {/* ════════════════════════ CLIENT (LAN) ════════════════════════ */}
       {mode === 'client' && (
-        <View style={styles.pageCenter}>
-          <View style={styles.titleRowSmall}>
-            <Text style={styles.titleMada}>MADA</Text>
-            <Text style={styles.titlePoly}>POLY</Text>
+        <ScrollView contentContainerStyle={styles.pageScrollCenter} showsVerticalScrollIndicator={false}>
+          <View style={styles.logoBlock}>
+            <LogoLemur width={90} height={90} />
+            <Text style={styles.mainTitleSmall}>MADAPOLY</Text>
+            <Text style={styles.subTitleSmall}>Ariary Luxe Edition</Text>
           </View>
           <View style={styles.content}>
-            <Text style={styles.pageTitle}>Connecté à {clientInputIp}</Text>
+            <Text style={[styles.pageTitle, { marginTop: 10 }]}>Connecté à {clientInputIp}</Text>
             <PlayerSlot avatar={localPlayerAvatar} name={localPlayerName} role="Connecté ✓" isReady={isLocalReady} />
             
             {!isLocalReady ? (
@@ -1060,15 +1062,16 @@ export const LobbyScreen = () => {
               <Text style={styles.cancelText}>Quitter</Text>
             </TouchableOpacity>
           </View>
-        </View>
+        </ScrollView>
       )}
 
       {/* ════════════════════════ ONLINE HOST ════════════════════════ */}
       {mode === 'online_host' && (
-        <ScrollView contentContainerStyle={styles.pageScrollCenter}>
-          <View style={styles.titleRowSmall}>
-            <Text style={styles.titleMada}>MADA</Text>
-            <Text style={styles.titlePoly}>POLY</Text>
+        <ScrollView contentContainerStyle={styles.pageScrollCenter} showsVerticalScrollIndicator={false}>
+          <View style={styles.logoBlock}>
+            <LogoLemur width={90} height={90} />
+            <Text style={styles.mainTitleSmall}>MADAPOLY</Text>
+            <Text style={styles.subTitleSmall}>Ariary Luxe Edition</Text>
           </View>
           <View style={styles.content}>
             {onlineRoomName.trim() ? <Text style={styles.roomNameBadge}>"{onlineRoomName.trim()}"</Text> : null}
@@ -1135,14 +1138,14 @@ export const LobbyScreen = () => {
 
       {/* ════════════════════════ ONLINE CLIENT ════════════════════════ */}
       {mode === 'online_client' && (
-        <View style={styles.pageCenter}>
-          <View style={styles.titleRowSmall}>
-            <Text style={styles.titleMada}>MADA</Text>
-            <Text style={styles.titlePoly}>POLY</Text>
+        <ScrollView contentContainerStyle={styles.pageScrollCenter} showsVerticalScrollIndicator={false}>
+          <View style={styles.logoBlock}>
+            <LogoLemur width={90} height={90} />
+            <Text style={styles.mainTitleSmall}>MADAPOLY</Text>
+            <Text style={styles.subTitleSmall}>Ariary Luxe Edition</Text>
           </View>
           <View style={styles.content}>
-            <Text style={styles.sectionLabel}>ROOM</Text>
-            <Text style={styles.roomCode}>{clientInputRoomCode.toUpperCase()}</Text>
+            <Text style={[styles.pageTitle, { marginTop: 10 }]}>ROOM : {clientInputRoomCode.toUpperCase()}</Text>
             <PlayerSlot avatar={localPlayerAvatar} name={localPlayerName} role="Connecté ✓" isReady={isLocalReady} />
             
             {!isLocalReady ? (
@@ -1166,7 +1169,7 @@ export const LobbyScreen = () => {
               <Text style={styles.cancelText}>Quitter</Text>
             </TouchableOpacity>
           </View>
-        </View>
+        </ScrollView>
       )}
 
     </SafeAreaView>
@@ -1187,6 +1190,8 @@ const styles = StyleSheet.create({
   logoBlock: { alignItems: 'center', paddingTop: 40, paddingBottom: 20 },
   mainTitle: { fontSize: 32, fontFamily: 'Inter_900Black', color: '#FFF', letterSpacing: 3, marginTop: 12 },
   subTitle: { fontSize: 14, fontFamily: 'Inter_700Bold', color: COLORS.madaGreen, letterSpacing: 1, marginTop: 4, textTransform: 'uppercase' },
+  mainTitleSmall: { fontSize: 24, fontFamily: 'Inter_900Black', color: '#FFF', letterSpacing: 2, marginTop: 8 },
+  subTitleSmall: { fontSize: 11, fontFamily: 'Inter_700Bold', color: COLORS.madaGreen, letterSpacing: 1, marginTop: 2, textTransform: 'uppercase' },
   titleRowSmall: { flexDirection: 'row', alignItems: 'flex-end', marginBottom: 20 },
   titleMada: { fontSize: 42, fontFamily: 'Inter_900Black', color: COLORS.madaWhite, letterSpacing: 2 },
   titlePoly: { fontSize: 42, fontFamily: 'Inter_900Black', color: COLORS.madaRed, letterSpacing: 2 },

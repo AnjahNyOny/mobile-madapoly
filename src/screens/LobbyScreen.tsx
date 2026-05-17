@@ -1092,18 +1092,25 @@ export const LobbyScreen = () => {
             {pendingRequests.length > 0 && (
               <View style={styles.pendingBlock}>
                 <Text style={styles.pendingTitle}>Demandes en attente</Text>
-                {pendingRequests.map(req => (
-                  <View key={req.socketId} style={styles.pendingRow}>
-                    <Text style={styles.pendingAvatar}>{req.playerAvatar}</Text>
-                    <Text style={styles.pendingName}>{req.playerName}</Text>
-                    <TouchableOpacity style={styles.approveBtn} onPress={() => handleApprove(req.socketId)}>
-                      <Text style={styles.approveBtnText}>✓</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity style={styles.rejectBtn} onPress={() => handleReject(req.socketId)}>
-                      <Text style={styles.rejectBtnText}>✕</Text>
-                    </TouchableOpacity>
-                  </View>
-                ))}
+                {pendingRequests.map(req => {
+                  const img = req.playerAvatar ? getTokenImage(req.playerAvatar) : null;
+                  return (
+                    <View key={req.socketId} style={styles.pendingRow}>
+                      {img ? (
+                        <Image source={img} style={styles.pendingAvatarImage} />
+                      ) : (
+                        <Text style={styles.pendingAvatar}>{req.playerAvatar || '🎮'}</Text>
+                      )}
+                      <Text style={styles.pendingName}>{req.playerName}</Text>
+                      <TouchableOpacity style={styles.approveBtn} onPress={() => handleApprove(req.socketId)}>
+                        <Text style={styles.approveBtnText}>✓</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity style={styles.rejectBtn} onPress={() => handleReject(req.socketId)}>
+                        <Text style={styles.rejectBtnText}>✕</Text>
+                      </TouchableOpacity>
+                    </View>
+                  );
+                })}
               </View>
             )}
 
@@ -1322,6 +1329,7 @@ const styles = StyleSheet.create({
   pendingTitle: { color: COLORS.gold, fontFamily: 'Inter_700Bold', fontSize: 13, marginBottom: 10 },
   pendingRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 8 },
   pendingAvatar: { fontSize: 22, marginRight: 8 },
+  pendingAvatarImage: { width: 28, height: 28, resizeMode: 'contain', marginRight: 8 },
   pendingName: { flex: 1, color: COLORS.text, fontFamily: 'Inter_400Regular', fontSize: 14 },
   approveBtn: { backgroundColor: COLORS.success, borderRadius: 8, width: 34, height: 34, alignItems: 'center', justifyContent: 'center', marginRight: 6 },
   approveBtnText: { color: '#FFF', fontFamily: 'Inter_700Bold', fontSize: 16 },

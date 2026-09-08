@@ -5,6 +5,11 @@ Monopoly Madagascar est une adaptation mobile du célèbre jeu de plateau Monopo
 ## 🚀 Fonctionnalités Principales (Phase 1)
 
 * **Plateau de jeu 100% Malgache** : 40 cases repensées avec des lieux emblématiques (Tsingy de Bemaraha, Nosy Be, Antananarivo, etc.), des gares locales (Cotisse, Posy-posy) et des services publics (JIRAMA).
+
+## 📸 Aperçu
+
+![Monopoly Madagascar Preview](./assets/images/preview.png)
+
 * **Joueur vs IA** : Affrontez des bots dotés d'un comportement déterministe intelligent (achats, gestion de prison, constructions).
 * **Moteur de jeu robuste** : Gestion complète des règles fondamentales (lancer de dés, déplacements, achats, loyers, prison, faillite).
 * **Caméra Dynamique** : Une interface utilisateur (HUD) fluide qui centre la vue automatiquement sur l'action en cours.
